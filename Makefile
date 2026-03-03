@@ -1,5 +1,5 @@
 # Variables
-BINARY_NAME=atlas-seed
+BINARY_NAME=porticos
 MAIN_PATH=./cmd/api
 
 # Colors for output

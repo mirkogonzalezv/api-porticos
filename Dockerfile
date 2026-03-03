@@ -17,7 +17,7 @@ COPY . .
 
 # Compilación estática
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -o atlas-seed-go ./cmd/api
+    go build -o rea/porticos ./cmd/api
 
 
 # Exponer puerto
