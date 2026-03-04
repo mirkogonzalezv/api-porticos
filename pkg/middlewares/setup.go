@@ -25,6 +25,9 @@ func Register(router *gin.Engine, opts Options) {
 	)
 	router.Use(AuthJWTMiddleware(verifier, opts.RoleResolver))
 
+	rateLimiter := newRoleAwareRateLimiter(opts.RateLimit, opts.RateLimitWindowSec)
+	router.Use(rateLimiter.Middleware())
+
 	corsCfg := cors.Config{
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{"Origin", "Content-Type", "Authorization"},

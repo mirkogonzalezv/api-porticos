@@ -6,5 +6,7 @@ type Options struct {
 	SupabaseJWKSURL     string
 	SupabaseJWTIssuer   string
 	SupabaseJWTAudience string
+	RateLimit           int
+	RateLimitWindowSec  int
 	RoleResolver        UserRoleResolver
 }

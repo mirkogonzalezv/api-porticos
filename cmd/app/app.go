@@ -95,6 +95,8 @@ func (a *App) Initializar() error {
 		SupabaseJWKSURL:     cfg.SupabaseJWKSURL,
 		SupabaseJWTIssuer:   cfg.SupabaseJWTIssuer,
 		SupabaseJWTAudience: cfg.SupabaseJWTAudience,
+		RateLimit:           cfg.RateLimit,
+		RateLimitWindowSec:  cfg.RateLimitWindowSec,
 		RoleResolver:        roleResolver,
 	})
 

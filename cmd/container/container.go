@@ -15,6 +15,7 @@ import (
 	porticosRoutes "rea/porticos/internal/modules/porticos/infraestructure/routes"
 	"rea/porticos/pkg/db"
 	"rea/porticos/pkg/logger"
+	"time"
 )
 
 // Container para manejo de inyección de dependencias
@@ -31,6 +32,7 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	healthRoutes.ConfigHealthVersion(healthController)
 
 	porticosRepo := porticosData.NewPostgresPorticoRepository(dbConn.Pool)
+	porticosRepo = porticosData.NewCachedPorticoRepository(porticosRepo, 20*time.Second, 300)
 	porticosUseCase := porticosUseCases.NewPorticosUseCase(porticosRepo)
 	porticosController := porticosHandler.NewPorticosHandler(porticosUseCase)
 	porticosRoutes.ConfigPorticosVersion(porticosController)

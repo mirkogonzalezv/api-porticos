@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -49,11 +51,12 @@ func (h *PorticosHandler) List(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	payload := gin.H{
 		"data":   result,
 		"limit":  limit,
 		"offset": offset,
-	})
+	}
+	writeCachedJSON(c, http.StatusOK, payload, 30)
 }
 
 func (h *PorticosHandler) GetByID(c *gin.Context) {
@@ -64,7 +67,7 @@ func (h *PorticosHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	writeCachedJSON(c, http.StatusOK, result, 30)
 }
 
 func (h *PorticosHandler) Create(c *gin.Context) {
@@ -171,4 +174,27 @@ func decodeStrictJSON(c *gin.Context, target any) error {
 func respondError(c *gin.Context, err error) {
 	status, payload := httpMapper.MapErrorToHttp(err)
 	c.JSON(status, payload)
+}
+
+func writeCachedJSON(c *gin.Context, status int, payload any, maxAgeSec int) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(status, payload)
+		return
+	}
+
+	sum := sha256.Sum256(raw)
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+
+	ifNoneMatch := strings.TrimSpace(c.GetHeader("If-None-Match"))
+	if ifNoneMatch != "" && ifNoneMatch == etag {
+		c.Header("ETag", etag)
+		c.Header("Cache-Control", "public, max-age="+strconv.Itoa(maxAgeSec)+", stale-while-revalidate=60")
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", "public, max-age="+strconv.Itoa(maxAgeSec)+", stale-while-revalidate=60")
+	c.Data(status, "application/json; charset=utf-8", raw)
 }
