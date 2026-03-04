@@ -3,6 +3,8 @@ package middlewares
 import (
 	"strings"
 
+	"rea/porticos/pkg/auth"
+
 	"github.com/danielkov/gin-helmet/ginhelmet"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -15,6 +17,13 @@ func Register(router *gin.Engine, opts Options) {
 	router.Use(ErrorHandlerMiddleware())
 
 	router.Use(ginhelmet.Default())
+
+	verifier := auth.NewSupabaseVerifier(
+		opts.SupabaseJWKSURL,
+		opts.SupabaseJWTIssuer,
+		opts.SupabaseJWTAudience,
+	)
+	router.Use(AuthJWTMiddleware(verifier))
 
 	corsCfg := cors.Config{
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},

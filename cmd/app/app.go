@@ -13,6 +13,7 @@ import (
 	"rea/porticos/pkg/logger"
 	"rea/porticos/pkg/middlewares"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -51,6 +52,12 @@ func (a *App) Initializar() error {
 		return err
 	}
 
+	if strings.TrimSpace(cfg.SupabaseJWKSURL) == "" ||
+		strings.TrimSpace(cfg.SupabaseJWTIssuer) == "" ||
+		strings.TrimSpace(cfg.SupabaseJWTAudience) == "" {
+		return fmt.Errorf("faltan variables SUPABASE_JWKS_URL, SUPABASE_JWT_ISSUER o SUPABASE_JWT_AUDIENCE")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -70,7 +77,6 @@ func (a *App) Initializar() error {
 
 	a.db = pg
 	a.config = cfg
-	a.config = cfg
 	logger.Success("Conexión a PostgreSQL validada")
 	logger.Success("Configuración cargada correctamente")
 	logger.General("Servidor HTTP Configurado")
@@ -78,8 +84,11 @@ func (a *App) Initializar() error {
 	router := gin.New()
 
 	middlewares.Register(router, middlewares.Options{
-		Environment:    env,
-		AllowedOrigins: cfg.AllowedOrigins,
+		Environment:         env,
+		AllowedOrigins:      cfg.AllowedOrigins,
+		SupabaseJWKSURL:     cfg.SupabaseJWKSURL,
+		SupabaseJWTIssuer:   cfg.SupabaseJWTIssuer,
+		SupabaseJWTAudience: cfg.SupabaseJWTAudience,
 	})
 
 	// Después de configurar middlewares
@@ -144,9 +153,10 @@ func (a *App) Apagar() {
 	// Cerrar conexiónes a DB u otras dependencias
 	logger.General("Cerrando conexiones y recursos...")
 
-	// DB cerrar
-	// Cerrar Colas
-	// Cerrar recursos
+	if a.db != nil {
+		a.db.Close()
+		logger.General("Conexión PostgreSQL cerrada")
+	}
 
 	// Simular tiempo de cierre de recursos
 	time.Sleep(100 * time.Millisecond)

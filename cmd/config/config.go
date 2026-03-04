@@ -26,6 +26,11 @@ type Configuracion struct {
 	DBPassword string `env:"DB_PASSWORD,required"`
 	DBName     string `env:"DB_NAME,required"`
 	DBSSLMode  string `env:"DB_SSL_MODE" envDefault:"disable" validate:"oneof=disable require verify-ca verify-full"`
+
+	SupabaseURL         string `env:"SUPABASE_URL"`
+	SupabaseJWKSURL     string `env:"SUPABASE_JWKS_URL"`
+	SupabaseJWTIssuer   string `env:"SUPABASE_JWT_ISSUER"`
+	SupabaseJWTAudience string `env:"SUPABASE_JWT_AUDIENCE"`
 }
 
 func CargarVariables() (*Configuracion, error) {
