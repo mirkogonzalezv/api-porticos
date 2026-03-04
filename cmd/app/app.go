@@ -83,7 +83,7 @@ func (a *App) Initializar() error {
 	})
 
 	// Después de configurar middlewares
-	container := container.NewContainer()
+	container := container.NewContainer(a.db)
 	apiRouter := routes.NewAPIRouter(container)
 	apiRouter.RegisterRoutes(router)
 
