@@ -9,6 +9,10 @@ import (
 	healthUseCase "rea/porticos/internal/modules/health/application/use_case"
 	healthController "rea/porticos/internal/modules/health/infrastructure/controller"
 	healthRoutes "rea/porticos/internal/modules/health/infrastructure/routes"
+	pasosData "rea/porticos/internal/modules/pasos/application/data"
+	pasosUseCases "rea/porticos/internal/modules/pasos/application/use_cases"
+	pasosHandler "rea/porticos/internal/modules/pasos/infraestructure/handler"
+	pasosRoutes "rea/porticos/internal/modules/pasos/infraestructure/routes"
 	porticosData "rea/porticos/internal/modules/porticos/application/data"
 	porticosUseCases "rea/porticos/internal/modules/porticos/application/use_cases"
 	porticosHandler "rea/porticos/internal/modules/porticos/infraestructure/handler"
@@ -28,6 +32,7 @@ type Container struct {
 	PorticosController  *porticosHandler.PorticosHandler
 	AccountsController  *accountsHandler.AccountsHandler
 	VehiculosController *vehiculosHandler.VehiculosHandler
+	PasosController     *pasosHandler.PasosHandler
 }
 
 func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Container {
@@ -53,6 +58,11 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	vehiculosController := vehiculosHandler.NewVehiculosHandler(vehiculosUseCase)
 	vehiculosRoutes.ConfigVehiculosVersion(vehiculosController)
 
+	pasosRepo := pasosData.NewPasosPostgresRepository(dbConn.Pool)
+	pasosUseCase := pasosUseCases.NewPasosUseCase(pasosRepo, vehiculosRepo, porticosRepo)
+	pasosController := pasosHandler.NewPasosHandler(pasosUseCase)
+	pasosRoutes.ConfigPasosVersion(pasosController)
+
 	logger.Success("Container de dependencias inicializado...")
 
 	return &Container{
@@ -60,5 +70,6 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 		PorticosController:  porticosController,
 		AccountsController:  accountsController,
 		VehiculosController: vehiculosController,
+		PasosController:     pasosController,
 	}
 }
