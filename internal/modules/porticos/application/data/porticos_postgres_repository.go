@@ -40,12 +40,13 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO porticos (
-			codigo, nombre, latitude, longitude, bearing, detection_radius_meters
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			codigo, nombre, concesionaria_id, latitude, longitude, bearing, detection_radius_meters
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id::text
 	`,
 		portico.Codigo,
 		portico.Nombre,
+		portico.ConcesionariaID,
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,
@@ -85,8 +86,17 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 
 	rows, err := r.pool.Query(ctx, `
 		SELECT
-			id::text, codigo, nombre, latitude, longitude, bearing, detection_radius_meters
-		FROM porticos
+			p.id::text,
+			p.codigo,
+			p.nombre,
+			p.concesionaria_id::text,
+			c.nombre AS concesionaria_nombre,
+			p.latitude,
+			p.longitude,
+			p.bearing,
+			p.detection_radius_meters
+		FROM porticos p
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
@@ -102,6 +112,8 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			&p.ID,
 			&p.Codigo,
 			&p.Nombre,
+			&p.ConcesionariaID,
+			&p.Concesionaria,
 			&p.Latitude,
 			&p.Longitude,
 			&p.Bearing,
@@ -135,13 +147,24 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 	var p entities.Portico
 	err := r.pool.QueryRow(ctx, `
 		SELECT
-			id::text, codigo, nombre, latitude, longitude, bearing, detection_radius_meters
-		FROM porticos
+			p.id::text,
+			p.codigo,
+			p.nombre,
+			p.concesionaria_id::text,
+			c.nombre AS concesionaria_nombre,
+			p.latitude,
+			p.longitude,
+			p.bearing,
+			p.detection_radius_meters
+		FROM porticos p
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE id = $1
 	`, id).Scan(
 		&p.ID,
 		&p.Codigo,
 		&p.Nombre,
+		&p.ConcesionariaID,
+		&p.Concesionaria,
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
@@ -172,13 +195,24 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 	var p entities.Portico
 	err := r.pool.QueryRow(ctx, `
 		SELECT
-			id::text, codigo, nombre, latitude, longitude, bearing, detection_radius_meters
-		FROM porticos
+			p.id::text,
+			p.codigo,
+			p.nombre,
+			p.concesionaria_id::text,
+			c.nombre AS concesionaria_nombre,
+			p.latitude,
+			p.longitude,
+			p.bearing,
+			p.detection_radius_meters
+		FROM porticos p
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE codigo = $1
 	`, codigo).Scan(
 		&p.ID,
 		&p.Codigo,
 		&p.Nombre,
+		&p.ConcesionariaID,
+		&p.Concesionaria,
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
@@ -222,16 +256,18 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 		SET
 			codigo = $2,
 			nombre = $3,
-			latitude = $4,
-			longitude = $5,
-			bearing = $6,
-			detection_radius_meters = $7,
+			concesionaria_id = $4,
+			latitude = $5,
+			longitude = $6,
+			bearing = $7,
+			detection_radius_meters = $8,
 			updated_at = NOW()
 		WHERE id = $1
 	`,
 		portico.ID,
 		portico.Codigo,
 		portico.Nombre,
+		portico.ConcesionariaID,
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,

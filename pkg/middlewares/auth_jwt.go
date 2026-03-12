@@ -24,6 +24,12 @@ type UserRoleResolver interface {
 
 func AuthJWTMiddleware(verifier *auth.SupabaseVerifier, roleResolver UserRoleResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// CORS preflight siempre público.
+		if c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
+
 		// Health endpoint público
 		if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/v1/health" {
 			c.Next()

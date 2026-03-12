@@ -18,7 +18,7 @@ type Configuracion struct {
 	BodyMaxBytes       int64  `env:"BODY_MAX_BYTES" envDefault:"1048576" validate:"gte=1024,lte=10485760"`
 	RateLimit          int    `env:"RATE_LIMIT" envDefault:"100" validate:"gte=1,lte=10000"`
 	RateLimitWindowSec int    `env:"RATE_LIMIT_WINDOW_SEC" envDefault:"60" validate:"gte=1,lte=3600"`
-	AllowedOrigins     string `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:3000"`
+	AllowedOrigins     string `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:4200,http://127.0.0.1:4200"`
 
 	DBHost     string `env:"DB_HOST" envDefault:"localhost"`
 	DBPort     int    `env:"DB_PORT" envDefault:"5432"`

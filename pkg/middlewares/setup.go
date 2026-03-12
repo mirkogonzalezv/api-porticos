@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"strings"
+	"time"
 
 	"rea/porticos/pkg/auth"
 
@@ -18,6 +19,19 @@ func Register(router *gin.Engine, opts Options) {
 
 	router.Use(ginhelmet.Default())
 
+	corsCfg := cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+	if opts.AllowedOrigins != "" {
+		corsCfg.AllowOrigins = splitCSV(opts.AllowedOrigins)
+	} else if strings.EqualFold(strings.TrimSpace(opts.Environment), "dev") {
+		corsCfg.AllowOrigins = []string{"http://localhost:4200", "http://127.0.0.1:4200"}
+	}
+	router.Use(cors.New(corsCfg))
+
 	verifier := auth.NewSupabaseVerifier(
 		opts.SupabaseJWKSURL,
 		opts.SupabaseJWTIssuer,
@@ -27,15 +41,6 @@ func Register(router *gin.Engine, opts Options) {
 
 	rateLimiter := newRoleAwareRateLimiter(opts.RateLimit, opts.RateLimitWindowSec)
 	router.Use(rateLimiter.Middleware())
-
-	corsCfg := cors.Config{
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders: []string{"Origin", "Content-Type", "Authorization"},
-	}
-	if opts.AllowedOrigins != "" {
-		corsCfg.AllowOrigins = splitCSV(opts.AllowedOrigins)
-	}
-	router.Use(cors.New(corsCfg))
 }
 
 func splitCSV(v string) []string {

@@ -9,6 +9,8 @@ type Portico struct {
 	ID                    string   `json:"id"`
 	Codigo                string   `json:"codigo"`
 	Nombre                string   `json:"nombre"`
+	ConcesionariaID       string   `json:"concesionariaId,omitempty"`
+	Concesionaria         string   `json:"concesionaria,omitempty"`
 	Latitude              float64  `json:"latitude"`
 	Longitude             float64  `json:"longitude"`
 	Bearing               *float64 `json:"bearing,omitempty"`
@@ -23,6 +25,11 @@ func (p *Portico) Validate() error {
 
 	if strings.TrimSpace(p.Nombre) == "" {
 		return domainErrors.NewValidationError("PORTICO_NOMBRE_REQUIRED", "nombre es obligatorio")
+	}
+
+	p.ConcesionariaID = strings.TrimSpace(p.ConcesionariaID)
+	if p.ConcesionariaID == "" {
+		return domainErrors.NewValidationError("PORTICO_CONCESIONARIA_REQUIRED", "concesionariaId es obligatorio")
 	}
 
 	if p.Latitude < -90 || p.Latitude > 90 {

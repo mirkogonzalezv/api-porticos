@@ -6,9 +6,17 @@ import (
 	accountsUseCases "rea/porticos/internal/modules/accounts/application/use_cases"
 	accountsHandler "rea/porticos/internal/modules/accounts/infraestructure/handler"
 	accountsRoutes "rea/porticos/internal/modules/accounts/infraestructure/routes"
+	concesionariasData "rea/porticos/internal/modules/concesionarias/application/data"
+	concesionariasUseCases "rea/porticos/internal/modules/concesionarias/application/use_cases"
+	concesionariasHandler "rea/porticos/internal/modules/concesionarias/infraestructure/handler"
+	concesionariasRoutes "rea/porticos/internal/modules/concesionarias/infraestructure/routes"
 	healthUseCase "rea/porticos/internal/modules/health/application/use_case"
 	healthController "rea/porticos/internal/modules/health/infrastructure/controller"
 	healthRoutes "rea/porticos/internal/modules/health/infrastructure/routes"
+	kpisData "rea/porticos/internal/modules/kpis/application/data"
+	kpisUseCases "rea/porticos/internal/modules/kpis/application/use_cases"
+	kpisHandler "rea/porticos/internal/modules/kpis/infraestructure/handler"
+	kpisRoutes "rea/porticos/internal/modules/kpis/infraestructure/routes"
 	pasosData "rea/porticos/internal/modules/pasos/application/data"
 	pasosUseCases "rea/porticos/internal/modules/pasos/application/use_cases"
 	pasosHandler "rea/porticos/internal/modules/pasos/infraestructure/handler"
@@ -28,11 +36,13 @@ import (
 
 // Container para manejo de inyección de dependencias
 type Container struct {
-	HealthController    *healthController.HealthController
-	PorticosController  *porticosHandler.PorticosHandler
-	AccountsController  *accountsHandler.AccountsHandler
-	VehiculosController *vehiculosHandler.VehiculosHandler
-	PasosController     *pasosHandler.PasosHandler
+	HealthController         *healthController.HealthController
+	PorticosController       *porticosHandler.PorticosHandler
+	AccountsController       *accountsHandler.AccountsHandler
+	VehiculosController      *vehiculosHandler.VehiculosHandler
+	PasosController          *pasosHandler.PasosHandler
+	KPIsController           *kpisHandler.KPIsHandler
+	ConcesionariasController *concesionariasHandler.ConcesionariasHandler
 }
 
 func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Container {
@@ -63,13 +73,25 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	pasosController := pasosHandler.NewPasosHandler(pasosUseCase)
 	pasosRoutes.ConfigPasosVersion(pasosController)
 
+	kpisRepo := kpisData.NewKPIsPostgresRepository(dbConn.Pool)
+	kpisUseCase := kpisUseCases.NewKPIsUseCase(kpisRepo)
+	kpisController := kpisHandler.NewKPIsHandler(kpisUseCase)
+	kpisRoutes.ConfigKPIsVersion(kpisController)
+
+	concesionariasRepo := concesionariasData.NewConcesionariasPostgresRepository(dbConn.Pool)
+	concesionariasUseCase := concesionariasUseCases.NewConcesionariasUseCase(concesionariasRepo)
+	concesionariasController := concesionariasHandler.NewConcesionariasHandler(concesionariasUseCase)
+	concesionariasRoutes.ConfigConcesionariasVersion(concesionariasController)
+
 	logger.Success("Container de dependencias inicializado...")
 
 	return &Container{
-		HealthController:    healthController,
-		PorticosController:  porticosController,
-		AccountsController:  accountsController,
-		VehiculosController: vehiculosController,
-		PasosController:     pasosController,
+		HealthController:         healthController,
+		PorticosController:       porticosController,
+		AccountsController:       accountsController,
+		VehiculosController:      vehiculosController,
+		PasosController:          pasosController,
+		KPIsController:           kpisController,
+		ConcesionariasController: concesionariasController,
 	}
 }

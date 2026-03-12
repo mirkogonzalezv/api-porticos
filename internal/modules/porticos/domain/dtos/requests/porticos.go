@@ -11,6 +11,7 @@ import (
 type PorticoUpsertRequest struct {
 	Codigo                string          `json:"codigo"`
 	Nombre                string          `json:"nombre"`
+	ConcesionariaID       string          `json:"concesionariaId"`
 	Latitude              float64         `json:"latitude"`
 	Longitude             float64         `json:"longitude"`
 	Bearing               *float64        `json:"bearing,omitempty"`
@@ -34,6 +35,7 @@ func (r *PorticoUpsertRequest) ToEntity() (*entities.Portico, error) {
 	out := &entities.Portico{
 		Codigo:                strings.TrimSpace(r.Codigo),
 		Nombre:                strings.TrimSpace(r.Nombre),
+		ConcesionariaID:       strings.TrimSpace(r.ConcesionariaID),
 		Latitude:              r.Latitude,
 		Longitude:             r.Longitude,
 		Bearing:               r.Bearing,
