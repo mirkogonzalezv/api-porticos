@@ -25,11 +25,13 @@ func (r *KPIsPostgresRepository) GetBasicKPIs(ctx context.Context) (*entities.Ba
 		SELECT
 			(SELECT COUNT(*) FROM porticos) AS total_porticos,
 			(SELECT COUNT(*) FROM pasos_portico) AS total_registros_porticos,
-			(SELECT COUNT(DISTINCT patente) FROM vehiculos) AS total_patentes
+			(SELECT COUNT(DISTINCT patente) FROM vehiculos) AS total_patentes,
+			(SELECT COUNT(*) FROM concesionarias) AS total_concesionarias
 	`).Scan(
 		&kpis.TotalPorticos,
 		&kpis.TotalRegistrosPorticos,
 		&kpis.TotalPatentes,
+		&kpis.TotalConcesionarias,
 	)
 	if err != nil {
 		return nil, domainErrors.NewInternalError("KPI_BASIC_QUERY_ERROR", "error al obtener KPIs básicos")
