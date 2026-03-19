@@ -12,9 +12,11 @@ import (
 	requests "rea/porticos/internal/modules/pasos/domain/dtos/requests"
 	domainErrors "rea/porticos/pkg/errors"
 	httpMapper "rea/porticos/pkg/http"
+	"rea/porticos/pkg/logger"
 	"rea/porticos/pkg/middlewares"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type PasosHandler struct {
@@ -324,5 +326,13 @@ func decodeStrictJSON(c *gin.Context, target any) error {
 func respondError(c *gin.Context, err error) {
 	_ = c.Error(err)
 	status, payload := httpMapper.MapErrorToHttp(err)
+	if status >= 500 {
+		logger.L().Error("Handler error",
+			zap.String("path", c.Request.URL.Path),
+			zap.String("method", c.Request.Method),
+			zap.Int("status", status),
+			zap.Error(err),
+		)
+	}
 	c.JSON(status, payload)
 }
