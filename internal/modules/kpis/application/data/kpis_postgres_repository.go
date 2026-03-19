@@ -44,7 +44,7 @@ func (r *KPIsPostgresRepository) GetBasicKPIs(ctx context.Context) (*entities.Ba
 		time.Sleep(100 * time.Millisecond)
 	}
 	if err != nil {
-		logger.Error("Error obteniendo KPIs básicos", zap.Error(err))
+		logger.FromContext(ctx).Error("Error obteniendo KPIs básicos", zap.Error(err))
 		return nil, domainErrors.NewInternalError("KPI_BASIC_QUERY_ERROR", "error al obtener KPIs básicos")
 	}
 

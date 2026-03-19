@@ -36,6 +36,7 @@ func (h *PorticosHandler) GetVersion() int {
 }
 
 func (h *PorticosHandler) List(c *gin.Context) {
+
 	limit, err := parseQueryInt(c, "limit", 20)
 	if err != nil {
 		respondError(c, err)
@@ -177,7 +178,7 @@ func respondError(c *gin.Context, err error) {
 	_ = c.Error(err)
 	status, payload := httpMapper.MapErrorToHttp(err)
 	if status >= 500 {
-		logger.L().Error("Handler error",
+		logger.FromContext(c.Request.Context()).Error("Handler error",
 			zap.String("path", c.Request.URL.Path),
 			zap.String("method", c.Request.Method),
 			zap.Int("status", status),

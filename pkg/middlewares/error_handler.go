@@ -66,11 +66,16 @@ func ErrorLoggerMiddleware() gin.HandlerFunc {
 			errMsg = "no error details"
 		}
 
+		reqID, _ := c.Get("request_id")
+		userID, _ := c.Get(ContextUserIDKey)
+
 		logger.L().Error("Request failed",
 			zap.Int("status", status),
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
 			zap.String("error", errMsg),
+			zap.Any("request_id", reqID),
+			zap.Any("user_id", userID),
 			zap.Duration("latency_ms", time.Since(start)),
 		)
 	}
