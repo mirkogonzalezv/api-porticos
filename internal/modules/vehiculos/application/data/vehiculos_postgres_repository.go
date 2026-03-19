@@ -8,10 +8,12 @@ import (
 	"rea/porticos/internal/modules/vehiculos/domain/entities"
 	"rea/porticos/internal/modules/vehiculos/domain/repository"
 	domainErrors "rea/porticos/pkg/errors"
+	"rea/porticos/pkg/logger"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 type VehiculosPostgresRepository struct {
@@ -40,6 +42,7 @@ func (r *VehiculosPostgresRepository) Create(ctx context.Context, vehiculo *enti
 		if isUniqueViolation(err) {
 			return nil, domainErrors.NewConflictError("VEHICULO_PATENTE_DUPLICADA", "ya existe un vehículo con esa patente")
 		}
+		logger.L().Error("Vehiculo create error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_CREATE_ERROR", "error al crear vehículo")
 	}
 	return r.GetByID(ctx, vehiculo.OwnerSupabaseUserID, vehiculo.ID)
@@ -70,6 +73,7 @@ func (r *VehiculosPostgresRepository) ListByOwner(ctx context.Context, ownerID s
 		LIMIT $2 OFFSET $3
 	`, ownerID, limit, offset)
 	if err != nil {
+		logger.L().Error("Vehiculo list error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_LIST_ERROR", "error al listar vehículos")
 	}
 	defer rows.Close()
@@ -78,11 +82,13 @@ func (r *VehiculosPostgresRepository) ListByOwner(ctx context.Context, ownerID s
 	for rows.Next() {
 		var v entities.Vehiculo
 		if err := rows.Scan(&v.ID, &v.OwnerSupabaseUserID, &v.Patente, &v.TipoVehiculo, &v.Alias, &v.Activo); err != nil {
+			logger.L().Error("Vehiculo list scan error", zap.Error(err))
 			return nil, domainErrors.NewInternalError("VEHICULO_LIST_SCAN_ERROR", "error al leer vehículos")
 		}
 		out = append(out, v)
 	}
 	if err := rows.Err(); err != nil {
+		logger.L().Error("Vehiculo list rows error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_LIST_ROWS_ERROR", "error iterando vehículos")
 	}
 	return out, nil
@@ -108,6 +114,7 @@ func (r *VehiculosPostgresRepository) ListAll(ctx context.Context, filter reposi
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
+		logger.L().Error("Vehiculo list all error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_LIST_ERROR", "error al listar vehículos")
 	}
 	defer rows.Close()
@@ -116,11 +123,13 @@ func (r *VehiculosPostgresRepository) ListAll(ctx context.Context, filter reposi
 	for rows.Next() {
 		var v entities.Vehiculo
 		if err := rows.Scan(&v.ID, &v.OwnerSupabaseUserID, &v.Patente, &v.TipoVehiculo, &v.Alias, &v.Activo); err != nil {
+			logger.L().Error("Vehiculo list all scan error", zap.Error(err))
 			return nil, domainErrors.NewInternalError("VEHICULO_LIST_SCAN_ERROR", "error al leer vehículos")
 		}
 		out = append(out, v)
 	}
 	if err := rows.Err(); err != nil {
+		logger.L().Error("Vehiculo list all rows error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_LIST_ROWS_ERROR", "error iterando vehículos")
 	}
 	return out, nil
@@ -145,6 +154,7 @@ func (r *VehiculosPostgresRepository) GetByID(ctx context.Context, ownerID, id s
 		if err == pgx.ErrNoRows {
 			return nil, domainErrors.NewNotFoundError("VEHICULO_NOT_FOUND", "vehículo no encontrado")
 		}
+		logger.L().Error("Vehiculo get error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_GET_ERROR", "error al obtener vehículo")
 	}
 	return &v, nil
@@ -167,6 +177,7 @@ func (r *VehiculosPostgresRepository) GetByIDAny(ctx context.Context, id string)
 		if err == pgx.ErrNoRows {
 			return nil, domainErrors.NewNotFoundError("VEHICULO_NOT_FOUND", "vehículo no encontrado")
 		}
+		logger.L().Error("Vehiculo get any error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_GET_ERROR", "error al obtener vehículo")
 	}
 	return &v, nil
@@ -198,6 +209,7 @@ func (r *VehiculosPostgresRepository) Update(ctx context.Context, vehiculo *enti
 		if isUniqueViolation(err) {
 			return nil, domainErrors.NewConflictError("VEHICULO_PATENTE_DUPLICADA", "ya existe un vehículo con esa patente")
 		}
+		logger.L().Error("Vehiculo update error", zap.Error(err))
 		return nil, domainErrors.NewInternalError("VEHICULO_UPDATE_ERROR", "error al actualizar vehículo")
 	}
 	if tag.RowsAffected() == 0 {
@@ -215,6 +227,7 @@ func (r *VehiculosPostgresRepository) Delete(ctx context.Context, ownerID, id st
 
 	tag, err := r.pool.Exec(ctx, `DELETE FROM vehiculos WHERE owner_supabase_user_id = $1 AND id = $2`, ownerID, id)
 	if err != nil {
+		logger.L().Error("Vehiculo delete error", zap.Error(err))
 		return domainErrors.NewInternalError("VEHICULO_DELETE_ERROR", "error al eliminar vehículo")
 	}
 	if tag.RowsAffected() == 0 {
