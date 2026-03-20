@@ -11,7 +11,6 @@ import (
 	domainErrors "rea/porticos/pkg/errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -36,7 +35,7 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 		return nil, domainErrors.NewInternalError("PASO_SOURCE_JSON_ERROR", "error serializando posición de origen")
 	}
 
-	err := r.pool.QueryRow(ctx, `
+	err = r.pool.QueryRow(ctx, `
 		INSERT INTO pasos_portico (
 			owner_supabase_user_id,
 			vehiculo_id,
@@ -110,7 +109,7 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 			return nil, domainErrors.NewInternalError("PASO_SOURCE_JSON_ERROR", "error serializando posición de origen")
 		}
 		var id string
-		err := tx.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
 			INSERT INTO pasos_portico (
 				owner_supabase_user_id,
 				vehiculo_id,
@@ -485,15 +484,16 @@ func (r *PasosPostgresRepository) ListAllRange(
 	return out, nil
 }
 
-func encodeSourcePosition(value any) (pgtype.JSONB, error) {
+func encodeSourcePosition(value any) (*string, error) {
 	if value == nil {
-		return pgtype.JSONB{Valid: false}, nil
+		return nil, nil
 	}
 	raw, err := json.Marshal(value)
 	if err != nil {
-		return pgtype.JSONB{}, err
+		return nil, err
 	}
-	return pgtype.JSONB{Bytes: raw, Valid: true}, nil
+	payload := string(raw)
+	return &payload, nil
 }
 
 func decodeSourcePosition(raw []byte) any {
