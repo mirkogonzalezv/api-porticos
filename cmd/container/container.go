@@ -1,6 +1,7 @@
 package container
 
 import (
+	"fmt"
 	configuracion "rea/porticos/cmd/config"
 	accountsData "rea/porticos/internal/modules/accounts/application/data"
 	accountsUseCases "rea/porticos/internal/modules/accounts/application/use_cases"
@@ -97,7 +98,8 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 			logger.Error("Error conectando Redis, usando memoria: " + err.Error())
 		} else {
 			trackingStore = trackingData.NewTrackingRedisRepository(redisClient.Client)
-			logger.General("Tracking store en Redis inicializado")
+			logger.Success("Redis conectado correctamente")
+			logger.General("Redis host=" + cfg.RedisHost + " port=" + fmt.Sprintf("%d", cfg.RedisPort) + " db=" + fmt.Sprintf("%d", cfg.RedisDB) + " ssl=" + fmt.Sprintf("%t", cfg.RedisSSL))
 		}
 	} else {
 		logger.General("REDIS_HOST vacío, tracking en memoria")
