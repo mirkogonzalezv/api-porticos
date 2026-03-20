@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 
 	"rea/porticos/internal/modules/porticos/domain/entities"
@@ -40,8 +41,8 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO porticos (
-			codigo, nombre, concesionaria_id, latitude, longitude, bearing, detection_radius_meters
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			codigo, nombre, concesionaria_id, latitude, longitude, bearing, bearing_tolerance_deg, detection_radius_meters, entry_radius_meters, exit_radius_meters
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id::text
 	`,
 		portico.Codigo,
@@ -50,7 +51,10 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,
+		portico.BearingToleranceDeg,
 		portico.DetectionRadiusMeters,
+		portico.EntryRadiusMeters,
+		portico.ExitRadiusMeters,
 	).Scan(&portico.ID)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -94,7 +98,10 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.detection_radius_meters
+			p.bearing_tolerance_deg,
+			p.detection_radius_meters,
+			p.entry_radius_meters,
+			p.exit_radius_meters
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		ORDER BY p.created_at DESC
@@ -117,7 +124,10 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			&p.Latitude,
 			&p.Longitude,
 			&p.Bearing,
+			&p.BearingToleranceDeg,
 			&p.DetectionRadiusMeters,
+			&p.EntryRadiusMeters,
+			&p.ExitRadiusMeters,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PORTICO_LIST_SCAN_ERROR", "error al leer pórticos")
 		}
@@ -155,7 +165,10 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.detection_radius_meters
+			p.bearing_tolerance_deg,
+			p.detection_radius_meters,
+			p.entry_radius_meters,
+			p.exit_radius_meters
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE p.id = $1
@@ -168,7 +181,10 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
+		&p.BearingToleranceDeg,
 		&p.DetectionRadiusMeters,
+		&p.EntryRadiusMeters,
+		&p.ExitRadiusMeters,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -184,6 +200,66 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 	p.Tarifas = tarifas
 
 	return &p, nil
+}
+
+func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, maxDistanceMeters float64) ([]entities.Portico, error) {
+	if maxDistanceMeters <= 0 {
+		maxDistanceMeters = 500
+	}
+	dlat := maxDistanceMeters / 111320.0
+	cosLat := math.Cos(lat * math.Pi / 180)
+	dlng := maxDistanceMeters / (111320.0 * cosLat)
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			p.id::text,
+			p.codigo,
+			p.nombre,
+			p.concesionaria_id::text,
+			c.nombre AS concesionaria_nombre,
+			p.latitude,
+			p.longitude,
+			p.bearing,
+			p.bearing_tolerance_deg,
+			p.detection_radius_meters,
+			p.entry_radius_meters,
+			p.exit_radius_meters
+		FROM porticos p
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
+		WHERE p.latitude BETWEEN $1 AND $2
+		  AND p.longitude BETWEEN $3 AND $4
+	`, lat-dlat, lat+dlat, lng-dlng, lng+dlng)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_NEARBY_ERROR", "error al buscar pórticos cercanos")
+	}
+	defer rows.Close()
+
+	out := make([]entities.Portico, 0)
+	for rows.Next() {
+		var p entities.Portico
+		if err := rows.Scan(
+			&p.ID,
+			&p.Codigo,
+			&p.Nombre,
+			&p.ConcesionariaID,
+			&p.Concesionaria,
+			&p.Latitude,
+			&p.Longitude,
+			&p.Bearing,
+			&p.BearingToleranceDeg,
+			&p.DetectionRadiusMeters,
+			&p.EntryRadiusMeters,
+			&p.ExitRadiusMeters,
+		); err != nil {
+			return nil, domainErrors.NewInternalError("PORTICO_NEARBY_SCAN_ERROR", "error al leer pórticos cercanos")
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_NEARBY_ROWS_ERROR", "error iterando pórticos cercanos")
+	}
+
+	return out, nil
 }
 
 func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo string) (*entities.Portico, error) {
@@ -203,7 +279,10 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.detection_radius_meters
+			p.bearing_tolerance_deg,
+			p.detection_radius_meters,
+			p.entry_radius_meters,
+			p.exit_radius_meters
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE p.codigo = $1
@@ -216,7 +295,10 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
+		&p.BearingToleranceDeg,
 		&p.DetectionRadiusMeters,
+		&p.EntryRadiusMeters,
+		&p.ExitRadiusMeters,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -260,7 +342,10 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 			latitude = $5,
 			longitude = $6,
 			bearing = $7,
-			detection_radius_meters = $8,
+			bearing_tolerance_deg = $8,
+			detection_radius_meters = $9,
+			entry_radius_meters = $10,
+			exit_radius_meters = $11,
 			updated_at = NOW()
 		WHERE id = $1
 	`,
@@ -271,7 +356,10 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,
+		portico.BearingToleranceDeg,
 		portico.DetectionRadiusMeters,
+		portico.EntryRadiusMeters,
+		portico.ExitRadiusMeters,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {

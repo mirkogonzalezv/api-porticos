@@ -175,6 +175,10 @@ func (r *CachedPorticoRepository) GetByCodigo(ctx context.Context, codigo string
 	return cloned, nil
 }
 
+func (r *CachedPorticoRepository) ListNearby(ctx context.Context, lat, lng, maxDistanceMeters float64) ([]entities.Portico, error) {
+	return r.inner.ListNearby(ctx, lat, lng, maxDistanceMeters)
+}
+
 func (r *CachedPorticoRepository) Update(ctx context.Context, portico *entities.Portico) (*entities.Portico, error) {
 	updated, err := r.inner.Update(ctx, portico)
 	if err != nil {

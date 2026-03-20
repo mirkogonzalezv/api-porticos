@@ -10,6 +10,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/joho/godotenv v1.5.1
+	github.com/redis/go-redis/v9 v9.6.1
 	go.uber.org/zap v1.27.1
 )
 

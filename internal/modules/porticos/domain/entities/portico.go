@@ -14,7 +14,10 @@ type Portico struct {
 	Latitude              float64  `json:"latitude"`
 	Longitude             float64  `json:"longitude"`
 	Bearing               *float64 `json:"bearing,omitempty"`
+	BearingToleranceDeg   *int     `json:"bearingToleranceDeg,omitempty"`
 	DetectionRadiusMeters *float64 `json:"detectionRadiusMeters,omitempty"`
+	EntryRadiusMeters     *float64 `json:"entryRadiusMeters,omitempty"`
+	ExitRadiusMeters      *float64 `json:"exitRadiusMeters,omitempty"`
 	Tarifas               []Tarifa `json:"tarifas,omitempty"`
 }
 
@@ -43,8 +46,19 @@ func (p *Portico) Validate() error {
 	if p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing > 360) {
 		return domainErrors.NewValidationError("PORTICO_BEARING_INVALID", "bearing debe estar entre 0 y 360")
 	}
+	if p.BearingToleranceDeg != nil {
+		if *p.BearingToleranceDeg < 0 || *p.BearingToleranceDeg > 180 {
+			return domainErrors.NewValidationError("PORTICO_BEARING_TOLERANCE_INVALID", "bearingToleranceDeg debe estar entre 0 y 180")
+		}
+	}
 	if p.DetectionRadiusMeters != nil && *p.DetectionRadiusMeters <= 0 {
 		return domainErrors.NewValidationError("PORTICO_RADIUS_INVALID", "detectionRadiusMeters debe ser mayor que 0")
+	}
+	if p.EntryRadiusMeters != nil && *p.EntryRadiusMeters <= 0 {
+		return domainErrors.NewValidationError("PORTICO_ENTRY_RADIUS_INVALID", "entryRadiusMeters debe ser mayor que 0")
+	}
+	if p.ExitRadiusMeters != nil && *p.ExitRadiusMeters <= 0 {
+		return domainErrors.NewValidationError("PORTICO_EXIT_RADIUS_INVALID", "exitRadiusMeters debe ser mayor que 0")
 	}
 
 	for i := range p.Tarifas {

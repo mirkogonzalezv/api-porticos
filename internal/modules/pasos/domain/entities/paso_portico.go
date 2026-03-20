@@ -18,9 +18,13 @@ type PasoPortico struct {
 	FechaHoraPaso       time.Time `json:"fechaHoraPaso"`
 	Latitud             *float64  `json:"latitud,omitempty"`
 	Longitud            *float64  `json:"longitud,omitempty"`
+	Heading             *float64  `json:"heading,omitempty"`
+	Speed               *float64  `json:"speed,omitempty"`
 	MontoCobrado        int       `json:"montoCobrado"`
 	Moneda              string    `json:"moneda"`
 	Fuente              string    `json:"fuente"`
+	TrackingSessionID   string    `json:"trackingSessionId,omitempty"`
+	SourcePosition      any       `json:"sourcePosition,omitempty"`
 	CreatedAt           time.Time `json:"createdAt"`
 }
 

@@ -32,6 +32,12 @@ type Configuracion struct {
 	SupabaseJWTIssuer   string `env:"SUPABASE_JWT_ISSUER"`
 	SupabaseJWTAudience string `env:"SUPABASE_JWT_AUDIENCE"`
 	SupabaseServiceRole string `env:"SUPABASE_SERVICE_ROLE_KEY"`
+
+	RedisHost     string `env:"REDIS_HOST"`
+	RedisPort     int    `env:"REDIS_PORT" envDefault:"6379"`
+	RedisPassword string `env:"REDIS_PASSWORD"`
+	RedisDB       int    `env:"REDIS_DB" envDefault:"0"`
+	RedisSSL      bool   `env:"REDIS_SSL" envDefault:"false"`
 }
 
 func CargarVariables() (*Configuracion, error) {

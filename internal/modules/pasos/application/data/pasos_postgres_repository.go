@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	domainErrors "rea/porticos/pkg/errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -29,6 +31,11 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 		return nil, err
 	}
 
+	sourceJSON, err := encodeSourcePosition(paso.SourcePosition)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PASO_SOURCE_JSON_ERROR", "error serializando posición de origen")
+	}
+
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO pasos_portico (
 			owner_supabase_user_id,
@@ -37,10 +44,14 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 			fecha_hora_paso,
 			latitud,
 			longitud,
+			heading,
+			speed,
 			monto_cobrado,
 			moneda,
-			fuente
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			fuente,
+			tracking_session_id,
+			source_position
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id::text
 	`,
 		paso.OwnerSupabaseUserID,
@@ -49,9 +60,13 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 		paso.FechaHoraPaso,
 		paso.Latitud,
 		paso.Longitud,
+		paso.Heading,
+		paso.Speed,
 		paso.MontoCobrado,
 		paso.Moneda,
 		paso.Fuente,
+		nullableString(paso.TrackingSessionID),
+		sourceJSON,
 	).Scan(&paso.ID)
 	if err != nil {
 		return nil, domainErrors.NewInternalError("PASO_CREATE_ERROR", "error al registrar paso de pórtico")
@@ -90,6 +105,10 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 
 	ids := make([]string, 0, len(pasos))
 	for i := range pasos {
+		sourceJSON, err := encodeSourcePosition(pasos[i].SourcePosition)
+		if err != nil {
+			return nil, domainErrors.NewInternalError("PASO_SOURCE_JSON_ERROR", "error serializando posición de origen")
+		}
 		var id string
 		err := tx.QueryRow(ctx, `
 			INSERT INTO pasos_portico (
@@ -99,10 +118,14 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 				fecha_hora_paso,
 				latitud,
 				longitud,
+				heading,
+				speed,
 				monto_cobrado,
 				moneda,
-				fuente
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+				fuente,
+				tracking_session_id,
+				source_position
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			RETURNING id::text
 		`,
 			pasos[i].OwnerSupabaseUserID,
@@ -111,9 +134,13 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 			pasos[i].FechaHoraPaso,
 			pasos[i].Latitud,
 			pasos[i].Longitud,
+			pasos[i].Heading,
+			pasos[i].Speed,
 			pasos[i].MontoCobrado,
 			pasos[i].Moneda,
 			pasos[i].Fuente,
+			nullableString(pasos[i].TrackingSessionID),
+			sourceJSON,
 		).Scan(&id)
 		if err != nil {
 			return nil, domainErrors.NewInternalError("PASO_CREATE_ERROR", "error al registrar paso de pórtico")
@@ -136,6 +163,7 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 	}
 
 	var out entities.PasoPortico
+	var sourceBytes []byte
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			id::text,
@@ -145,9 +173,13 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 			fecha_hora_paso,
 			latitud,
 			longitud,
+			heading,
+			speed,
 			monto_cobrado,
 			moneda,
 			fuente,
+			tracking_session_id,
+			source_position,
 			created_at
 		FROM pasos_portico
 		WHERE owner_supabase_user_id = $1
@@ -161,9 +193,13 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 		&out.FechaHoraPaso,
 		&out.Latitud,
 		&out.Longitud,
+		&out.Heading,
+		&out.Speed,
 		&out.MontoCobrado,
 		&out.Moneda,
 		&out.Fuente,
+		&out.TrackingSessionID,
+		&sourceBytes,
 		&out.CreatedAt,
 	)
 	if err != nil {
@@ -173,6 +209,7 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 		return nil, domainErrors.NewInternalError("PASO_GET_ERROR", "error al obtener paso")
 	}
 
+	out.SourcePosition = decodeSourcePosition(sourceBytes)
 	return &out, nil
 }
 
@@ -198,9 +235,13 @@ func (r *PasosPostgresRepository) fetchByIDs(ctx context.Context, ownerID string
 			fecha_hora_paso,
 			latitud,
 			longitud,
+			heading,
+			speed,
 			monto_cobrado,
 			moneda,
 			fuente,
+			tracking_session_id,
+			source_position,
 			created_at
 		FROM pasos_portico
 		WHERE owner_supabase_user_id = $1
@@ -216,6 +257,7 @@ func (r *PasosPostgresRepository) fetchByIDs(ctx context.Context, ownerID string
 	byID := make(map[string]entities.PasoPortico, len(ids))
 	for rows.Next() {
 		var item entities.PasoPortico
+		var sourceBytes []byte
 		if err := rows.Scan(
 			&item.ID,
 			&item.OwnerSupabaseUserID,
@@ -224,13 +266,18 @@ func (r *PasosPostgresRepository) fetchByIDs(ctx context.Context, ownerID string
 			&item.FechaHoraPaso,
 			&item.Latitud,
 			&item.Longitud,
+			&item.Heading,
+			&item.Speed,
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
+			&item.TrackingSessionID,
+			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PASO_BATCH_FETCH_SCAN_ERROR", "error al leer pasos creados")
 		}
+		item.SourcePosition = decodeSourcePosition(sourceBytes)
 		byID[item.ID] = item
 	}
 	if err := rows.Err(); err != nil {
@@ -286,9 +333,13 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 			pp.fecha_hora_paso,
 			pp.latitud,
 			pp.longitud,
+			pp.heading,
+			pp.speed,
 			pp.monto_cobrado,
 			pp.moneda,
 			pp.fuente,
+			pp.tracking_session_id,
+			pp.source_position,
 			pp.created_at
 		FROM pasos_portico pp
 		JOIN vehiculos v ON v.id = pp.vehiculo_id
@@ -310,6 +361,7 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 	out := make([]entities.PasoPortico, 0)
 	for rows.Next() {
 		var item entities.PasoPortico
+		var sourceBytes []byte
 		if err := rows.Scan(
 			&item.ID,
 			&item.OwnerSupabaseUserID,
@@ -321,13 +373,18 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 			&item.FechaHoraPaso,
 			&item.Latitud,
 			&item.Longitud,
+			&item.Heading,
+			&item.Speed,
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
+			&item.TrackingSessionID,
+			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PASO_LIST_SCAN_ERROR", "error al leer pasos")
 		}
+		item.SourcePosition = decodeSourcePosition(sourceBytes)
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -368,9 +425,13 @@ func (r *PasosPostgresRepository) ListAllRange(
 			pp.fecha_hora_paso,
 			pp.latitud,
 			pp.longitud,
+			pp.heading,
+			pp.speed,
 			pp.monto_cobrado,
 			pp.moneda,
 			pp.fuente,
+			pp.tracking_session_id,
+			pp.source_position,
 			pp.created_at
 		FROM pasos_portico pp
 		JOIN vehiculos v ON v.id = pp.vehiculo_id
@@ -391,6 +452,7 @@ func (r *PasosPostgresRepository) ListAllRange(
 	out := make([]entities.PasoPortico, 0)
 	for rows.Next() {
 		var item entities.PasoPortico
+		var sourceBytes []byte
 		if err := rows.Scan(
 			&item.ID,
 			&item.OwnerSupabaseUserID,
@@ -402,13 +464,18 @@ func (r *PasosPostgresRepository) ListAllRange(
 			&item.FechaHoraPaso,
 			&item.Latitud,
 			&item.Longitud,
+			&item.Heading,
+			&item.Speed,
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
+			&item.TrackingSessionID,
+			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PASO_LIST_SCAN_ERROR", "error al leer pasos")
 		}
+		item.SourcePosition = decodeSourcePosition(sourceBytes)
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -416,6 +483,36 @@ func (r *PasosPostgresRepository) ListAllRange(
 	}
 
 	return out, nil
+}
+
+func encodeSourcePosition(value any) (pgtype.JSONB, error) {
+	if value == nil {
+		return pgtype.JSONB{Valid: false}, nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return pgtype.JSONB{}, err
+	}
+	return pgtype.JSONB{Bytes: raw, Valid: true}, nil
+}
+
+func decodeSourcePosition(raw []byte) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func nullableString(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 func (r *PasosPostgresRepository) SummaryByOwnerRange(

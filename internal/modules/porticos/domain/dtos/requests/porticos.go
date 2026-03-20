@@ -15,7 +15,10 @@ type PorticoUpsertRequest struct {
 	Latitude              float64         `json:"latitude"`
 	Longitude             float64         `json:"longitude"`
 	Bearing               *float64        `json:"bearing,omitempty"`
+	BearingToleranceDeg   *int            `json:"bearingToleranceDeg,omitempty"`
 	DetectionRadiusMeters *float64        `json:"detectionRadiusMeters,omitempty"`
+	EntryRadiusMeters     *float64        `json:"entryRadiusMeters,omitempty"`
+	ExitRadiusMeters      *float64        `json:"exitRadiusMeters,omitempty"`
 	Tarifas               []TarifaRequest `json:"tarifas,omitempty"`
 }
 
@@ -39,7 +42,10 @@ func (r *PorticoUpsertRequest) ToEntity() (*entities.Portico, error) {
 		Latitude:              r.Latitude,
 		Longitude:             r.Longitude,
 		Bearing:               r.Bearing,
+		BearingToleranceDeg:   r.BearingToleranceDeg,
 		DetectionRadiusMeters: r.DetectionRadiusMeters,
+		EntryRadiusMeters:     r.EntryRadiusMeters,
+		ExitRadiusMeters:      r.ExitRadiusMeters,
 		Tarifas:               make([]entities.Tarifa, 0, len(r.Tarifas)),
 	}
 
