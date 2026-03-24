@@ -8,24 +8,27 @@ import (
 )
 
 type PasoPortico struct {
-	ID                  string    `json:"id"`
-	OwnerSupabaseUserID string    `json:"ownerSupabaseUserId"`
-	VehiculoID          string    `json:"vehiculoId"`
-	VehiculoPatente     string    `json:"vehiculoPatente,omitempty"`
-	PorticoID           string    `json:"porticoId"`
-	PorticoCodigo       string    `json:"porticoCodigo,omitempty"`
-	ConcesionariaNombre string    `json:"concesionariaNombre,omitempty"`
-	FechaHoraPaso       time.Time `json:"fechaHoraPaso"`
-	Latitud             *float64  `json:"latitud,omitempty"`
-	Longitud            *float64  `json:"longitud,omitempty"`
-	Heading             *float64  `json:"heading,omitempty"`
-	Speed               *float64  `json:"speed,omitempty"`
-	MontoCobrado        int       `json:"montoCobrado"`
-	Moneda              string    `json:"moneda"`
-	Fuente              string    `json:"fuente"`
-	TrackingSessionID   string    `json:"trackingSessionId,omitempty"`
-	SourcePosition      any       `json:"sourcePosition,omitempty"`
-	CreatedAt           time.Time `json:"createdAt"`
+	ID                  string     `json:"id"`
+	OwnerSupabaseUserID string     `json:"ownerSupabaseUserId"`
+	VehiculoID          string     `json:"vehiculoId"`
+	VehiculoPatente     string     `json:"vehiculoPatente,omitempty"`
+	PorticoID           string     `json:"porticoId"`
+	PorticoCodigo       string     `json:"porticoCodigo,omitempty"`
+	ConcesionariaNombre string     `json:"concesionariaNombre,omitempty"`
+	FechaHoraPaso       time.Time  `json:"fechaHoraPaso"`
+	EntryTimestamp      *time.Time `json:"entryTimestamp,omitempty"`
+	ExitTimestamp       *time.Time `json:"exitTimestamp,omitempty"`
+	DireccionPaso       string     `json:"direccionPaso,omitempty"`
+	Latitud             *float64   `json:"latitud,omitempty"`
+	Longitud            *float64   `json:"longitud,omitempty"`
+	Heading             *float64   `json:"heading,omitempty"`
+	Speed               *float64   `json:"speed,omitempty"`
+	MontoCobrado        int        `json:"montoCobrado"`
+	Moneda              string     `json:"moneda"`
+	Fuente              string     `json:"fuente"`
+	TrackingSessionID   string     `json:"trackingSessionId,omitempty"`
+	SourcePosition      any        `json:"sourcePosition,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
 }
 
 type ResumenPeriodo struct {
@@ -50,6 +53,18 @@ func (p *PasoPortico) ValidateForCreate() error {
 	}
 	if p.MontoCobrado < 0 {
 		return domainErrors.NewValidationError("PASO_MONTO_INVALID", "montoCobrado no puede ser negativo")
+	}
+	if p.EntryTimestamp != nil && p.ExitTimestamp != nil && p.ExitTimestamp.Before(*p.EntryTimestamp) {
+		return domainErrors.NewValidationError("PASO_TIMESTAMP_RANGE_INVALID", "exitTimestamp debe ser posterior a entryTimestamp")
+	}
+	if p.DireccionPaso != "" {
+		d := strings.ToUpper(strings.TrimSpace(p.DireccionPaso))
+		switch d {
+		case "N", "S", "E", "W", "NE", "NW", "SE", "SW":
+		default:
+			return domainErrors.NewValidationError("PASO_DIRECCION_INVALID", "direccionPaso no permitida")
+		}
+		p.DireccionPaso = d
 	}
 
 	if p.Moneda == "" {

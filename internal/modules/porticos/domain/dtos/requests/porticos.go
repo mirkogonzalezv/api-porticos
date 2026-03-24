@@ -19,6 +19,17 @@ type PorticoUpsertRequest struct {
 	DetectionRadiusMeters *float64        `json:"detectionRadiusMeters,omitempty"`
 	EntryRadiusMeters     *float64        `json:"entryRadiusMeters,omitempty"`
 	ExitRadiusMeters      *float64        `json:"exitRadiusMeters,omitempty"`
+	EntryLatitude         *float64        `json:"entryLatitude,omitempty"`
+	EntryLongitude        *float64        `json:"entryLongitude,omitempty"`
+	ExitLatitude          *float64        `json:"exitLatitude,omitempty"`
+	ExitLongitude         *float64        `json:"exitLongitude,omitempty"`
+	MaxCrossingSeconds    *int            `json:"maxCrossingSeconds,omitempty"`
+	Tipo                  string          `json:"tipo,omitempty"`
+	Direccion             string          `json:"direccion,omitempty"`
+	VelocidadMaxima       int             `json:"velocidadMaxima,omitempty"`
+	ZonaDeteccionWKT      string          `json:"zonaDeteccionWkt,omitempty"`
+	VehicleTypes          []string        `json:"vehicleTypes,omitempty"`
+	IsActive              *bool           `json:"isActive,omitempty"`
 	Tarifas               []TarifaRequest `json:"tarifas,omitempty"`
 }
 
@@ -46,7 +57,21 @@ func (r *PorticoUpsertRequest) ToEntity() (*entities.Portico, error) {
 		DetectionRadiusMeters: r.DetectionRadiusMeters,
 		EntryRadiusMeters:     r.EntryRadiusMeters,
 		ExitRadiusMeters:      r.ExitRadiusMeters,
+		EntryLatitude:         r.EntryLatitude,
+		EntryLongitude:        r.EntryLongitude,
+		ExitLatitude:          r.ExitLatitude,
+		ExitLongitude:         r.ExitLongitude,
+		MaxCrossingSeconds:    r.MaxCrossingSeconds,
+		Tipo:                  strings.TrimSpace(r.Tipo),
+		Direccion:             strings.TrimSpace(r.Direccion),
+		VelocidadMaxima:       r.VelocidadMaxima,
+		ZonaDeteccionWKT:      strings.TrimSpace(r.ZonaDeteccionWKT),
+		VehicleTypes:          r.VehicleTypes,
+		IsActive:              true,
 		Tarifas:               make([]entities.Tarifa, 0, len(r.Tarifas)),
+	}
+	if r.IsActive != nil {
+		out.IsActive = *r.IsActive
 	}
 
 	for _, tr := range r.Tarifas {

@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE porticos
+    DROP COLUMN IF EXISTS tipo;
+
+COMMIT;

@@ -11,6 +11,9 @@ import (
 	concesionariasUseCases "rea/porticos/internal/modules/concesionarias/application/use_cases"
 	concesionariasHandler "rea/porticos/internal/modules/concesionarias/infraestructure/handler"
 	concesionariasRoutes "rea/porticos/internal/modules/concesionarias/infraestructure/routes"
+	geoUseCases "rea/porticos/internal/modules/geo/application/use_cases"
+	geoHandler "rea/porticos/internal/modules/geo/infraestructure/handler"
+	geoRoutes "rea/porticos/internal/modules/geo/infraestructure/routes"
 	healthUseCase "rea/porticos/internal/modules/health/application/use_case"
 	healthController "rea/porticos/internal/modules/health/infrastructure/controller"
 	healthRoutes "rea/porticos/internal/modules/health/infrastructure/routes"
@@ -51,6 +54,7 @@ type Container struct {
 	KPIsController           *kpisHandler.KPIsHandler
 	ConcesionariasController *concesionariasHandler.ConcesionariasHandler
 	TrackingController       *trackingHandler.TrackingHandler
+	GeoController            *geoHandler.GeoBatchHandler
 }
 
 func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Container {
@@ -91,6 +95,10 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	concesionariasController := concesionariasHandler.NewConcesionariasHandler(concesionariasUseCase)
 	concesionariasRoutes.ConfigConcesionariasVersion(concesionariasController)
 
+	geoUseCase := geoUseCases.NewGeoBatchUseCase()
+	geoController := geoHandler.NewGeoBatchHandler(geoUseCase)
+	geoRoutes.ConfigGeoVersion(geoController)
+
 	var trackingStore trackingData.TrackingStore = trackingData.NewTrackingMemoryRepository()
 	if strings.TrimSpace(cfg.RedisHost) != "" {
 		redisClient, err := cache.NewRedis(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB, cfg.RedisSSL)
@@ -119,5 +127,6 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 		KPIsController:           kpisController,
 		ConcesionariasController: concesionariasController,
 		TrackingController:       trackingController,
+		GeoController:            geoController,
 	}
 }

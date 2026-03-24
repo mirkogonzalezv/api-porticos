@@ -5,15 +5,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"math"
+	"strings"
 	"time"
 
 	"rea/porticos/internal/modules/pasos/domain/entities"
 	pasosRepo "rea/porticos/internal/modules/pasos/domain/repository"
 	porticoEntities "rea/porticos/internal/modules/porticos/domain/entities"
 	porticosRepo "rea/porticos/internal/modules/porticos/domain/repository"
+	trackingRepo "rea/porticos/internal/modules/tracking/application/data"
 	"rea/porticos/internal/modules/tracking/domain/dtos/requests"
 	trackingEntities "rea/porticos/internal/modules/tracking/domain/entities"
-	trackingRepo "rea/porticos/internal/modules/tracking/application/data"
 	vehiculosRepo "rea/porticos/internal/modules/vehiculos/domain/repository"
 	domainErrors "rea/porticos/pkg/errors"
 )
@@ -26,11 +27,23 @@ const (
 	fastSpeedMps   = 20.0 / 3.6
 )
 
+type speedRule struct {
+	Min float64
+	Max float64
+}
+
+var porticoSpeedRules = map[string]speedRule{
+	"autopista":        {Min: 60.0 / 3.6, Max: 140.0 / 3.6},
+	"peaje_manual":     {Min: 1.0 / 3.6, Max: 20.0 / 3.6},
+	"peaje_automatico": {Min: 20.0 / 3.6, Max: 80.0 / 3.6},
+	"urbano":           {Min: 5.0 / 3.6, Max: 60.0 / 3.6},
+}
+
 type TrackingUseCase struct {
-	porticos porticosRepo.PorticoRepository
+	porticos  porticosRepo.PorticoRepository
 	vehiculos vehiculosRepo.VehiculoRepository
-	pasos pasosRepo.PasoPorticoRepository
-	store trackingRepo.TrackingStore
+	pasos     pasosRepo.PasoPorticoRepository
+	store     trackingRepo.TrackingStore
 }
 
 func NewTrackingUseCase(
@@ -75,21 +88,31 @@ func (uc *TrackingUseCase) ProcessPosition(ctx context.Context, ownerID string, 
 
 	for i := range candidates {
 		p := candidates[i]
+		if !p.IsActive {
+			continue
+		}
 		if !bearingOK(&p, req.Heading) {
 			continue
 		}
 
-		entryRadius := radiusOrDefault(p.EntryRadiusMeters, p.DetectionRadiusMeters, 120)
-		exitRadius := radiusOrDefault(p.ExitRadiusMeters, p.DetectionRadiusMeters, entryRadius)
-		distance := haversineMeters(req.Lat, req.Lng, p.Latitude, p.Longitude)
-
-		if distance > entryRadius {
+		entryLat := coordOrDefault(p.EntryLatitude, p.Latitude)
+		entryLng := coordOrDefault(p.EntryLongitude, p.Longitude)
+		exitLat := coordOrDefault(p.ExitLatitude, p.Latitude)
+		exitLng := coordOrDefault(p.ExitLongitude, p.Longitude)
+		if !speedOK(p.Tipo, req.Speed) {
 			continue
 		}
+		entryRadius := radiusOrDefault(p.EntryRadiusMeters, p.DetectionRadiusMeters, 120)
+		exitRadius := radiusOrDefault(p.ExitRadiusMeters, p.DetectionRadiusMeters, entryRadius)
+		distEntry := haversineMeters(req.Lat, req.Lng, entryLat, entryLng)
+		distExit := haversineMeters(req.Lat, req.Lng, exitLat, exitLng)
 
 		session, err := uc.store.GetSession(ctx, req.VehiculoID, p.ID)
 		if err != nil {
 			return nil, err
+		}
+		if session == nil && distEntry > entryRadius {
+			continue
 		}
 		if session == nil {
 			session = &trackingEntities.TrackingSession{
@@ -99,13 +122,20 @@ func (uc *TrackingUseCase) ProcessPosition(ctx context.Context, ownerID string, 
 			}
 		}
 
-		updateSession(session, req, ts, distance, entryRadius, exitRadius)
+		if session.EnteredAt.IsZero() == false {
+			if exceedsMaxCrossing(session.EnteredAt, ts, p.MaxCrossingSeconds) {
+				_ = uc.store.DeleteSession(ctx, req.VehiculoID, p.ID)
+				continue
+			}
+		}
+
+		updateSession(session, req, ts, distEntry, distExit, entryRadius, exitRadius)
 		if err := uc.store.SetSession(ctx, session, sessionTTL); err != nil {
 			return nil, err
 		}
 
 		if session.State == trackingEntities.TrackingExited {
-			if shouldValidate(session, ts, req.Speed) {
+			if shouldValidate(session, ts, req.Speed, p.MaxCrossingSeconds) {
 				lastPassAt, ok, err := uc.store.GetLastPass(ctx, req.VehiculoID, p.ID)
 				if err != nil {
 					return nil, err
@@ -119,6 +149,9 @@ func (uc *TrackingUseCase) ProcessPosition(ctx context.Context, ownerID string, 
 					VehiculoID:          req.VehiculoID,
 					PorticoID:           p.ID,
 					FechaHoraPaso:       ts,
+					EntryTimestamp:      timePtr(session.EnteredAt),
+					ExitTimestamp:       timePtr(session.ExitAt),
+					DireccionPaso:       p.Direccion,
 					Latitud:             &req.Lat,
 					Longitud:            &req.Lng,
 					Heading:             &req.Heading,
@@ -159,19 +192,18 @@ func (uc *TrackingUseCase) ProcessPosition(ctx context.Context, ownerID string, 
 	return &TrackingResult{Status: "NO_MATCH"}, nil
 }
 
-func updateSession(s *trackingEntities.TrackingSession, req *requests.TrackingPositionRequest, ts time.Time, dist, entryRadius, exitRadius float64) {
+func updateSession(s *trackingEntities.TrackingSession, req *requests.TrackingPositionRequest, ts time.Time, distEntry, distExit, entryRadius, exitRadius float64) {
 	s.LastSeenAt = ts
 	s.LastLat = req.Lat
 	s.LastLng = req.Lng
 	s.LastHeading = req.Heading
 	s.LastSpeed = req.Speed
 
-	inside := dist <= entryRadius
-	outside := dist > exitRadius
+	insideEntry := distEntry <= entryRadius
+	insideExit := distExit <= exitRadius
 
-	if inside {
+	if insideEntry {
 		s.InsideCount++
-		s.OutsideCount = 0
 		if s.State == "" && s.InsideCount >= 2 {
 			s.State = trackingEntities.TrackingEntered
 			s.EnteredAt = ts
@@ -181,19 +213,26 @@ func updateSession(s *trackingEntities.TrackingSession, req *requests.TrackingPo
 		if s.State == trackingEntities.TrackingEntered {
 			s.State = trackingEntities.TrackingInside
 		}
+	} else if s.State == "" {
+		s.InsideCount = 0
 	}
 
-	if outside {
-		s.OutsideCount++
-		s.InsideCount = 0
-		if s.State == trackingEntities.TrackingInside && s.OutsideCount >= 2 {
+	if (s.State == trackingEntities.TrackingEntered || s.State == trackingEntities.TrackingInside) && insideExit {
+		s.ExitCount++
+		if s.ExitCount >= 2 {
 			s.State = trackingEntities.TrackingExited
+			s.ExitAt = ts
 		}
+	} else if s.ExitCount > 0 {
+		s.ExitCount = 0
 	}
 }
 
-func shouldValidate(s *trackingEntities.TrackingSession, ts time.Time, speed float64) bool {
-	if s.EnteredAt.IsZero() {
+func shouldValidate(s *trackingEntities.TrackingSession, ts time.Time, speed float64, maxCrossingSeconds *int) bool {
+	if s.EnteredAt.IsZero() || s.ExitAt.IsZero() {
+		return false
+	}
+	if exceedsMaxCrossing(s.EnteredAt, ts, maxCrossingSeconds) {
 		return false
 	}
 	dt := ts.Sub(s.EnteredAt)
@@ -233,6 +272,38 @@ func radiusOrDefault(primary *float64, fallback *float64, def float64) float64 {
 		return *fallback
 	}
 	return def
+}
+
+func coordOrDefault(value *float64, fallback float64) float64 {
+	if value != nil {
+		return *value
+	}
+	return fallback
+}
+
+func speedOK(tipo string, speed float64) bool {
+	if speed < 0 {
+		return false
+	}
+	rule, ok := porticoSpeedRules[strings.ToLower(strings.TrimSpace(tipo))]
+	if !ok {
+		return true
+	}
+	return speed >= rule.Min && speed <= rule.Max
+}
+
+func exceedsMaxCrossing(enteredAt time.Time, now time.Time, maxCrossingSeconds *int) bool {
+	if enteredAt.IsZero() || maxCrossingSeconds == nil || *maxCrossingSeconds <= 0 {
+		return false
+	}
+	return now.Sub(enteredAt) > time.Duration(*maxCrossingSeconds)*time.Second
+}
+
+func timePtr(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {

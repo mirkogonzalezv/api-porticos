@@ -218,10 +218,48 @@ func clonePortico(in *entities.Portico) *entities.Portico {
 		v := *in.Bearing
 		out.Bearing = &v
 	}
+	if in.BearingToleranceDeg != nil {
+		v := *in.BearingToleranceDeg
+		out.BearingToleranceDeg = &v
+	}
 	if in.DetectionRadiusMeters != nil {
 		v := *in.DetectionRadiusMeters
 		out.DetectionRadiusMeters = &v
 	}
+	if in.EntryRadiusMeters != nil {
+		v := *in.EntryRadiusMeters
+		out.EntryRadiusMeters = &v
+	}
+	if in.ExitRadiusMeters != nil {
+		v := *in.ExitRadiusMeters
+		out.ExitRadiusMeters = &v
+	}
+	if in.EntryLatitude != nil {
+		v := *in.EntryLatitude
+		out.EntryLatitude = &v
+	}
+	if in.EntryLongitude != nil {
+		v := *in.EntryLongitude
+		out.EntryLongitude = &v
+	}
+	if in.ExitLatitude != nil {
+		v := *in.ExitLatitude
+		out.ExitLatitude = &v
+	}
+	if in.ExitLongitude != nil {
+		v := *in.ExitLongitude
+		out.ExitLongitude = &v
+	}
+	if in.MaxCrossingSeconds != nil {
+		v := *in.MaxCrossingSeconds
+		out.MaxCrossingSeconds = &v
+	}
+	out.Tipo = in.Tipo
+	out.Direccion = in.Direccion
+	out.VelocidadMaxima = in.VelocidadMaxima
+	out.ZonaDeteccionWKT = in.ZonaDeteccionWKT
+	out.VehicleTypes = append([]string(nil), in.VehicleTypes...)
+	out.IsActive = in.IsActive
 	out.Tarifas = make([]entities.Tarifa, 0, len(in.Tarifas))
 	for _, t := range in.Tarifas {
 		tarifa := t

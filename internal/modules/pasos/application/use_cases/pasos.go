@@ -71,6 +71,7 @@ func (uc *PasosUseCase) CreateBatch(ctx context.Context, ownerID string, items [
 			FechaHoraPaso: item.FechaHoraPaso,
 			Latitud:       item.Latitud,
 			Longitud:      item.Longitud,
+			DireccionPaso: strings.TrimSpace(item.DireccionPaso),
 			MontoCobrado:  item.MontoCobrado,
 			Moneda:        item.Moneda,
 			Fuente:        item.Fuente,

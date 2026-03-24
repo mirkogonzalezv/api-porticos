@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"strings"
@@ -41,8 +42,14 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO porticos (
-			codigo, nombre, concesionaria_id, latitude, longitude, bearing, bearing_tolerance_deg, detection_radius_meters, entry_radius_meters, exit_radius_meters
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			codigo, nombre, concesionaria_id, latitude, longitude, bearing, bearing_tolerance_deg, detection_radius_meters, entry_radius_meters, exit_radius_meters,
+			entry_latitude, entry_longitude, exit_latitude, exit_longitude, max_crossing_seconds, tipo,
+			direccion, velocidad_maxima, zona_de_deteccion, vehicle_types, is_active
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15, $16,
+			$17, $18, ST_GeogFromText($19), $20, $21
+		)
 		RETURNING id::text
 	`,
 		portico.Codigo,
@@ -55,6 +62,17 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 		portico.DetectionRadiusMeters,
 		portico.EntryRadiusMeters,
 		portico.ExitRadiusMeters,
+		portico.EntryLatitude,
+		portico.EntryLongitude,
+		portico.ExitLatitude,
+		portico.ExitLongitude,
+		portico.MaxCrossingSeconds,
+		portico.Tipo,
+		portico.Direccion,
+		portico.VelocidadMaxima,
+		nullableString(portico.ZonaDeteccionWKT),
+		encodeVehicleTypes(portico.VehicleTypes),
+		portico.IsActive,
 	).Scan(&portico.ID)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -101,7 +119,18 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
-			p.exit_radius_meters
+			p.exit_radius_meters,
+			p.entry_latitude,
+			p.entry_longitude,
+			p.exit_latitude,
+			p.exit_longitude,
+			p.max_crossing_seconds,
+			p.tipo,
+			p.direccion,
+			p.velocidad_maxima,
+			ST_AsText(p.zona_de_deteccion) AS zona_wkt,
+			p.vehicle_types,
+			p.is_active
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		ORDER BY p.created_at DESC
@@ -115,6 +144,7 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 	porticos := make([]entities.Portico, 0)
 	for rows.Next() {
 		var p entities.Portico
+		var vehicleTypesRaw []byte
 		if err := rows.Scan(
 			&p.ID,
 			&p.Codigo,
@@ -128,9 +158,21 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			&p.DetectionRadiusMeters,
 			&p.EntryRadiusMeters,
 			&p.ExitRadiusMeters,
+			&p.EntryLatitude,
+			&p.EntryLongitude,
+			&p.ExitLatitude,
+			&p.ExitLongitude,
+			&p.MaxCrossingSeconds,
+			&p.Tipo,
+			&p.Direccion,
+			&p.VelocidadMaxima,
+			&p.ZonaDeteccionWKT,
+			&vehicleTypesRaw,
+			&p.IsActive,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PORTICO_LIST_SCAN_ERROR", "error al leer pórticos")
 		}
+		p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 
 		tarifas, err := r.getTarifasByPorticoID(ctx, p.ID)
 		if err != nil {
@@ -155,6 +197,7 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 	}
 
 	var p entities.Portico
+	var vehicleTypesRaw []byte
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			p.id::text,
@@ -168,7 +211,18 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
-			p.exit_radius_meters
+			p.exit_radius_meters,
+			p.entry_latitude,
+			p.entry_longitude,
+			p.exit_latitude,
+			p.exit_longitude,
+			p.max_crossing_seconds,
+			p.tipo,
+			p.direccion,
+			p.velocidad_maxima,
+			ST_AsText(p.zona_de_deteccion) AS zona_wkt,
+			p.vehicle_types,
+			p.is_active
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE p.id = $1
@@ -185,6 +239,17 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 		&p.DetectionRadiusMeters,
 		&p.EntryRadiusMeters,
 		&p.ExitRadiusMeters,
+		&p.EntryLatitude,
+		&p.EntryLongitude,
+		&p.ExitLatitude,
+		&p.ExitLongitude,
+		&p.MaxCrossingSeconds,
+		&p.Tipo,
+		&p.Direccion,
+		&p.VelocidadMaxima,
+		&p.ZonaDeteccionWKT,
+		&vehicleTypesRaw,
+		&p.IsActive,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -197,6 +262,7 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 	if err != nil {
 		return nil, err
 	}
+	p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 	p.Tarifas = tarifas
 
 	return &p, nil
@@ -223,7 +289,18 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
-			p.exit_radius_meters
+			p.exit_radius_meters,
+			p.entry_latitude,
+			p.entry_longitude,
+			p.exit_latitude,
+			p.exit_longitude,
+			p.max_crossing_seconds,
+			p.tipo,
+			p.direccion,
+			p.velocidad_maxima,
+			ST_AsText(p.zona_de_deteccion) AS zona_wkt,
+			p.vehicle_types,
+			p.is_active
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE p.latitude BETWEEN $1 AND $2
@@ -237,6 +314,7 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 	out := make([]entities.Portico, 0)
 	for rows.Next() {
 		var p entities.Portico
+		var vehicleTypesRaw []byte
 		if err := rows.Scan(
 			&p.ID,
 			&p.Codigo,
@@ -250,9 +328,21 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 			&p.DetectionRadiusMeters,
 			&p.EntryRadiusMeters,
 			&p.ExitRadiusMeters,
+			&p.EntryLatitude,
+			&p.EntryLongitude,
+			&p.ExitLatitude,
+			&p.ExitLongitude,
+			&p.MaxCrossingSeconds,
+			&p.Tipo,
+			&p.Direccion,
+			&p.VelocidadMaxima,
+			&p.ZonaDeteccionWKT,
+			&vehicleTypesRaw,
+			&p.IsActive,
 		); err != nil {
 			return nil, domainErrors.NewInternalError("PORTICO_NEARBY_SCAN_ERROR", "error al leer pórticos cercanos")
 		}
+		p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -269,6 +359,7 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 	}
 
 	var p entities.Portico
+	var vehicleTypesRaw []byte
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			p.id::text,
@@ -282,7 +373,18 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
-			p.exit_radius_meters
+			p.exit_radius_meters,
+			p.entry_latitude,
+			p.entry_longitude,
+			p.exit_latitude,
+			p.exit_longitude,
+			p.max_crossing_seconds,
+			p.tipo,
+			p.direccion,
+			p.velocidad_maxima,
+			ST_AsText(p.zona_de_deteccion) AS zona_wkt,
+			p.vehicle_types,
+			p.is_active
 		FROM porticos p
 		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
 		WHERE p.codigo = $1
@@ -299,6 +401,17 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 		&p.DetectionRadiusMeters,
 		&p.EntryRadiusMeters,
 		&p.ExitRadiusMeters,
+		&p.EntryLatitude,
+		&p.EntryLongitude,
+		&p.ExitLatitude,
+		&p.ExitLongitude,
+		&p.MaxCrossingSeconds,
+		&p.Tipo,
+		&p.Direccion,
+		&p.VelocidadMaxima,
+		&p.ZonaDeteccionWKT,
+		&vehicleTypesRaw,
+		&p.IsActive,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -311,6 +424,7 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 	if err != nil {
 		return nil, err
 	}
+	p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 	p.Tarifas = tarifas
 
 	return &p, nil
@@ -346,6 +460,17 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 			detection_radius_meters = $9,
 			entry_radius_meters = $10,
 			exit_radius_meters = $11,
+			entry_latitude = $12,
+			entry_longitude = $13,
+			exit_latitude = $14,
+			exit_longitude = $15,
+			max_crossing_seconds = $16,
+			tipo = $17,
+			direccion = $18,
+			velocidad_maxima = $19,
+			zona_de_deteccion = ST_GeogFromText($20),
+			vehicle_types = $21,
+			is_active = $22,
 			updated_at = NOW()
 		WHERE id = $1
 	`,
@@ -360,6 +485,17 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 		portico.DetectionRadiusMeters,
 		portico.EntryRadiusMeters,
 		portico.ExitRadiusMeters,
+		portico.EntryLatitude,
+		portico.EntryLongitude,
+		portico.ExitLatitude,
+		portico.ExitLongitude,
+		portico.MaxCrossingSeconds,
+		portico.Tipo,
+		portico.Direccion,
+		portico.VelocidadMaxima,
+		nullableString(portico.ZonaDeteccionWKT),
+		encodeVehicleTypes(portico.VehicleTypes),
+		portico.IsActive,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -531,4 +667,34 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	return pgErr.Code == "23505"
+}
+
+func encodeVehicleTypes(items []string) []byte {
+	if len(items) == 0 {
+		return []byte("[]")
+	}
+	raw, err := json.Marshal(items)
+	if err != nil {
+		return []byte("[]")
+	}
+	return raw
+}
+
+func decodeVehicleTypes(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func nullableString(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

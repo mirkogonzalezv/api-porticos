@@ -18,6 +18,7 @@ type TrackingSession struct {
 	PorticoID    string        `json:"porticoId"`
 	State        TrackingState `json:"state"`
 	EnteredAt    time.Time     `json:"enteredAt"`
+	ExitAt       time.Time     `json:"exitAt"`
 	LastSeenAt   time.Time     `json:"lastSeenAt"`
 	FirstLat     float64       `json:"firstLat"`
 	FirstLng     float64       `json:"firstLng"`
@@ -27,4 +28,5 @@ type TrackingSession struct {
 	LastSpeed    float64       `json:"lastSpeed"`
 	InsideCount  int           `json:"insideCount"`
 	OutsideCount int           `json:"outsideCount"`
+	ExitCount    int           `json:"exitCount"`
 }
