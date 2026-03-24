@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE porticos
+    ADD COLUMN IF NOT EXISTS bearing_tolerance_deg INT NOT NULL DEFAULT 25;
+
+COMMIT;

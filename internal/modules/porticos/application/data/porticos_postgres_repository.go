@@ -10,6 +10,7 @@ import (
 	"rea/porticos/internal/modules/porticos/domain/entities"
 	"rea/porticos/internal/modules/porticos/domain/repository"
 	domainErrors "rea/porticos/pkg/errors"
+	"rea/porticos/pkg/logger"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -42,13 +43,13 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO porticos (
-			codigo, nombre, concesionaria_id, latitude, longitude, bearing, bearing_tolerance_deg, detection_radius_meters, entry_radius_meters, exit_radius_meters,
+			codigo, nombre, concesionaria_id, latitude, longitude, bearing, detection_radius_meters, entry_radius_meters, exit_radius_meters,
 			entry_latitude, entry_longitude, exit_latitude, exit_longitude, max_crossing_seconds, tipo,
 			direccion, velocidad_maxima, zona_de_deteccion, vehicle_types, is_active
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16,
-			$17, $18, ST_GeogFromText($19), $20, $21
+			$1, $2, $3, $4, $5, $6, $7, $8, $9,
+			$10, $11, $12, $13, $14, $15,
+			$16, $17, ST_GeogFromText($18), $19, $20
 		)
 		RETURNING id::text
 	`,
@@ -58,7 +59,6 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,
-		portico.BearingToleranceDeg,
 		portico.DetectionRadiusMeters,
 		portico.EntryRadiusMeters,
 		portico.ExitRadiusMeters,
@@ -75,6 +75,7 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 		portico.IsActive,
 	).Scan(&portico.ID)
 	if err != nil {
+		logger.Error("PORTICO_CREATE_ERROR: " + err.Error())
 		if isUniqueViolation(err) {
 			return nil, domainErrors.NewConflictError("PORTICO_CODIGO_DUPLICADO", "ya existe un pórtico con ese código")
 		}
@@ -82,6 +83,9 @@ func (r *PostgresPorticoRepository) Create(ctx context.Context, portico *entitie
 	}
 
 	if err := r.insertTarifasTx(ctx, tx, portico.ID, portico.Tarifas); err != nil {
+		return nil, err
+	}
+	if err := r.insertViasTx(ctx, tx, portico.ID, portico.Vias); err != nil {
 		return nil, err
 	}
 
@@ -116,7 +120,6 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
 			p.exit_radius_meters,
@@ -154,7 +157,6 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 			&p.Latitude,
 			&p.Longitude,
 			&p.Bearing,
-			&p.BearingToleranceDeg,
 			&p.DetectionRadiusMeters,
 			&p.EntryRadiusMeters,
 			&p.ExitRadiusMeters,
@@ -178,6 +180,11 @@ func (r *PostgresPorticoRepository) List(ctx context.Context, filter repository.
 		if err != nil {
 			return nil, err
 		}
+		vias, err := r.getViasByPorticoID(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		p.Vias = vias
 		p.Tarifas = tarifas
 
 		porticos = append(porticos, p)
@@ -208,7 +215,6 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
 			p.exit_radius_meters,
@@ -235,7 +241,6 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
-		&p.BearingToleranceDeg,
 		&p.DetectionRadiusMeters,
 		&p.EntryRadiusMeters,
 		&p.ExitRadiusMeters,
@@ -262,8 +267,13 @@ func (r *PostgresPorticoRepository) GetByID(ctx context.Context, id string) (*en
 	if err != nil {
 		return nil, err
 	}
+	vias, err := r.getViasByPorticoID(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
 	p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 	p.Tarifas = tarifas
+	p.Vias = vias
 
 	return &p, nil
 }
@@ -286,7 +296,6 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
 			p.exit_radius_meters,
@@ -324,7 +333,6 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 			&p.Latitude,
 			&p.Longitude,
 			&p.Bearing,
-			&p.BearingToleranceDeg,
 			&p.DetectionRadiusMeters,
 			&p.EntryRadiusMeters,
 			&p.ExitRadiusMeters,
@@ -352,6 +360,98 @@ func (r *PostgresPorticoRepository) ListNearby(ctx context.Context, lat, lng, ma
 	return out, nil
 }
 
+func (r *PostgresPorticoRepository) FindByTrajectory(ctx context.Context, lineWKT string) ([]entities.Portico, error) {
+	lineWKT = strings.TrimSpace(lineWKT)
+	if lineWKT == "" {
+		return nil, domainErrors.NewValidationError("PORTICO_TRAJECTORY_REQUIRED", "trajectory es obligatoria")
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			p.id::text,
+			p.codigo,
+			p.nombre,
+			p.concesionaria_id::text,
+			c.nombre AS concesionaria_nombre,
+			p.latitude,
+			p.longitude,
+			p.bearing,
+			p.detection_radius_meters,
+			p.entry_radius_meters,
+			p.exit_radius_meters,
+			p.entry_latitude,
+			p.entry_longitude,
+			p.exit_latitude,
+			p.exit_longitude,
+			p.max_crossing_seconds,
+			p.tipo,
+			p.direccion,
+			p.velocidad_maxima,
+			ST_AsText(p.zona_de_deteccion) AS zona_wkt,
+			p.vehicle_types,
+			p.is_active
+		FROM porticos p
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
+		WHERE p.is_active = TRUE
+		  AND p.zona_de_deteccion IS NOT NULL
+		  AND ST_Intersects(p.zona_de_deteccion, ST_GeogFromText($1))
+	`, lineWKT)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_TRAJECTORY_ERROR", "error al buscar pórticos por trayectoria")
+	}
+	defer rows.Close()
+
+	out := make([]entities.Portico, 0)
+	for rows.Next() {
+		var p entities.Portico
+		var vehicleTypesRaw []byte
+		if err := rows.Scan(
+			&p.ID,
+			&p.Codigo,
+			&p.Nombre,
+			&p.ConcesionariaID,
+			&p.Concesionaria,
+			&p.Latitude,
+			&p.Longitude,
+			&p.Bearing,
+			&p.DetectionRadiusMeters,
+			&p.EntryRadiusMeters,
+			&p.ExitRadiusMeters,
+			&p.EntryLatitude,
+			&p.EntryLongitude,
+			&p.ExitLatitude,
+			&p.ExitLongitude,
+			&p.MaxCrossingSeconds,
+			&p.Tipo,
+			&p.Direccion,
+			&p.VelocidadMaxima,
+			&p.ZonaDeteccionWKT,
+			&vehicleTypesRaw,
+			&p.IsActive,
+		); err != nil {
+			return nil, domainErrors.NewInternalError("PORTICO_TRAJECTORY_SCAN_ERROR", "error al leer pórticos por trayectoria")
+		}
+		p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
+
+		tarifas, err := r.getTarifasByPorticoID(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		vias, err := r.getViasByPorticoID(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		p.Vias = vias
+		p.Tarifas = tarifas
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_TRAJECTORY_ROWS_ERROR", "error iterando pórticos por trayectoria")
+	}
+
+	return out, nil
+}
+
 func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo string) (*entities.Portico, error) {
 	codigo = strings.TrimSpace(codigo)
 	if codigo == "" {
@@ -370,7 +470,6 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 			p.latitude,
 			p.longitude,
 			p.bearing,
-			p.bearing_tolerance_deg,
 			p.detection_radius_meters,
 			p.entry_radius_meters,
 			p.exit_radius_meters,
@@ -397,7 +496,6 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 		&p.Latitude,
 		&p.Longitude,
 		&p.Bearing,
-		&p.BearingToleranceDeg,
 		&p.DetectionRadiusMeters,
 		&p.EntryRadiusMeters,
 		&p.ExitRadiusMeters,
@@ -424,8 +522,13 @@ func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo stri
 	if err != nil {
 		return nil, err
 	}
+	vias, err := r.getViasByPorticoID(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
 	p.VehicleTypes = decodeVehicleTypes(vehicleTypesRaw)
 	p.Tarifas = tarifas
+	p.Vias = vias
 
 	return &p, nil
 }
@@ -456,21 +559,20 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 			latitude = $5,
 			longitude = $6,
 			bearing = $7,
-			bearing_tolerance_deg = $8,
-			detection_radius_meters = $9,
-			entry_radius_meters = $10,
-			exit_radius_meters = $11,
-			entry_latitude = $12,
-			entry_longitude = $13,
-			exit_latitude = $14,
-			exit_longitude = $15,
-			max_crossing_seconds = $16,
-			tipo = $17,
-			direccion = $18,
-			velocidad_maxima = $19,
-			zona_de_deteccion = ST_GeogFromText($20),
-			vehicle_types = $21,
-			is_active = $22,
+			detection_radius_meters = $8,
+			entry_radius_meters = $9,
+			exit_radius_meters = $10,
+			entry_latitude = $11,
+			entry_longitude = $12,
+			exit_latitude = $13,
+			exit_longitude = $14,
+			max_crossing_seconds = $15,
+			tipo = $16,
+			direccion = $17,
+			velocidad_maxima = $18,
+			zona_de_deteccion = ST_GeogFromText($19),
+			vehicle_types = $20,
+			is_active = $21,
 			updated_at = NOW()
 		WHERE id = $1
 	`,
@@ -481,7 +583,6 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 		portico.Latitude,
 		portico.Longitude,
 		portico.Bearing,
-		portico.BearingToleranceDeg,
 		portico.DetectionRadiusMeters,
 		portico.EntryRadiusMeters,
 		portico.ExitRadiusMeters,
@@ -511,8 +612,15 @@ func (r *PostgresPorticoRepository) Update(ctx context.Context, portico *entitie
 	if err != nil {
 		return nil, domainErrors.NewInternalError("PORTICO_TARIFAS_DELETE_ERROR", "error al reemplazar tarifas")
 	}
+	_, err = tx.Exec(ctx, `DELETE FROM portico_vias WHERE portico_id = $1`, portico.ID)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_VIAS_DELETE_ERROR", "error al reemplazar vias")
+	}
 
 	if err := r.insertTarifasTx(ctx, tx, portico.ID, portico.Tarifas); err != nil {
+		return nil, err
+	}
+	if err := r.insertViasTx(ctx, tx, portico.ID, portico.Vias); err != nil {
 		return nil, err
 	}
 
@@ -697,4 +805,104 @@ func nullableString(value string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func (r *PostgresPorticoRepository) insertViasTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	porticoID string,
+	vias []entities.Via,
+) error {
+	for i := range vias {
+		v := vias[i]
+		if err := v.Validate(); err != nil {
+			return err
+		}
+
+		_, err := tx.Exec(ctx, `
+			INSERT INTO portico_vias (
+				portico_id,
+				way_name,
+				direction_deg,
+				center_line,
+				entry_line,
+				exit_line,
+				entry_distance_m,
+				exit_distance_m,
+				auto_calculate,
+				is_active
+			) VALUES (
+				$1, $2, $3,
+				ST_GeogFromText($4),
+				ST_GeogFromText($5),
+				ST_GeogFromText($6),
+				$7, $8, $9, $10
+			)
+		`,
+			porticoID,
+			v.WayName,
+			v.DirectionDeg,
+			nullableString(v.CenterLineWKT),
+			nullableString(v.EntryLineWKT),
+			nullableString(v.ExitLineWKT),
+			v.EntryDistanceM,
+			v.ExitDistanceM,
+			v.AutoCalculate,
+			v.IsActive,
+		)
+		if err != nil {
+			logger.Error("PORTICO_VIA_CREATE_ERROR: " + err.Error())
+			return domainErrors.NewInternalError("PORTICO_VIA_CREATE_ERROR", "error al crear via")
+		}
+	}
+
+	return nil
+}
+
+func (r *PostgresPorticoRepository) getViasByPorticoID(ctx context.Context, porticoID string) ([]entities.Via, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			way_name,
+			direction_deg,
+			ST_AsText(center_line) AS center_wkt,
+			ST_AsText(entry_line) AS entry_wkt,
+			ST_AsText(exit_line) AS exit_wkt,
+			entry_distance_m,
+			exit_distance_m,
+			auto_calculate,
+			is_active
+		FROM portico_vias
+		WHERE portico_id = $1
+		ORDER BY created_at ASC
+	`, porticoID)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_VIA_LIST_ERROR", "error al cargar vias")
+	}
+	defer rows.Close()
+
+	out := make([]entities.Via, 0)
+	for rows.Next() {
+		var v entities.Via
+		if err := rows.Scan(
+			&v.ID,
+			&v.WayName,
+			&v.DirectionDeg,
+			&v.CenterLineWKT,
+			&v.EntryLineWKT,
+			&v.ExitLineWKT,
+			&v.EntryDistanceM,
+			&v.ExitDistanceM,
+			&v.AutoCalculate,
+			&v.IsActive,
+		); err != nil {
+			return nil, domainErrors.NewInternalError("PORTICO_VIA_SCAN_ERROR", "error al leer vias")
+		}
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_VIA_ROWS_ERROR", "error iterando vias")
+	}
+
+	return out, nil
 }

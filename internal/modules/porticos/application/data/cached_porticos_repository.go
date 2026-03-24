@@ -179,6 +179,10 @@ func (r *CachedPorticoRepository) ListNearby(ctx context.Context, lat, lng, maxD
 	return r.inner.ListNearby(ctx, lat, lng, maxDistanceMeters)
 }
 
+func (r *CachedPorticoRepository) FindByTrajectory(ctx context.Context, lineWKT string) ([]entities.Portico, error) {
+	return r.inner.FindByTrajectory(ctx, lineWKT)
+}
+
 func (r *CachedPorticoRepository) Update(ctx context.Context, portico *entities.Portico) (*entities.Portico, error) {
 	updated, err := r.inner.Update(ctx, portico)
 	if err != nil {
@@ -218,10 +222,6 @@ func clonePortico(in *entities.Portico) *entities.Portico {
 		v := *in.Bearing
 		out.Bearing = &v
 	}
-	if in.BearingToleranceDeg != nil {
-		v := *in.BearingToleranceDeg
-		out.BearingToleranceDeg = &v
-	}
 	if in.DetectionRadiusMeters != nil {
 		v := *in.DetectionRadiusMeters
 		out.DetectionRadiusMeters = &v
@@ -260,6 +260,10 @@ func clonePortico(in *entities.Portico) *entities.Portico {
 	out.ZonaDeteccionWKT = in.ZonaDeteccionWKT
 	out.VehicleTypes = append([]string(nil), in.VehicleTypes...)
 	out.IsActive = in.IsActive
+	out.Vias = make([]entities.Via, 0, len(in.Vias))
+	for _, v := range in.Vias {
+		out.Vias = append(out.Vias, v)
+	}
 	out.Tarifas = make([]entities.Tarifa, 0, len(in.Tarifas))
 	for _, t := range in.Tarifas {
 		tarifa := t

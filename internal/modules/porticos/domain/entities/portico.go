@@ -14,7 +14,6 @@ type Portico struct {
 	Latitude              float64  `json:"latitude"`
 	Longitude             float64  `json:"longitude"`
 	Bearing               *float64 `json:"bearing,omitempty"`
-	BearingToleranceDeg   *int     `json:"bearingToleranceDeg,omitempty"`
 	DetectionRadiusMeters *float64 `json:"detectionRadiusMeters,omitempty"`
 	EntryRadiusMeters     *float64 `json:"entryRadiusMeters,omitempty"`
 	ExitRadiusMeters      *float64 `json:"exitRadiusMeters,omitempty"`
@@ -29,6 +28,7 @@ type Portico struct {
 	ZonaDeteccionWKT      string   `json:"zonaDeteccionWkt,omitempty"`
 	VehicleTypes          []string `json:"vehicleTypes,omitempty"`
 	IsActive              bool     `json:"isActive"`
+	Vias                  []Via    `json:"vias,omitempty"`
 	Tarifas               []Tarifa `json:"tarifas,omitempty"`
 }
 
@@ -56,11 +56,6 @@ func (p *Portico) Validate() error {
 
 	if p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing > 360) {
 		return domainErrors.NewValidationError("PORTICO_BEARING_INVALID", "bearing debe estar entre 0 y 360")
-	}
-	if p.BearingToleranceDeg != nil {
-		if *p.BearingToleranceDeg < 0 || *p.BearingToleranceDeg > 180 {
-			return domainErrors.NewValidationError("PORTICO_BEARING_TOLERANCE_INVALID", "bearingToleranceDeg debe estar entre 0 y 180")
-		}
 	}
 	if p.DetectionRadiusMeters != nil && *p.DetectionRadiusMeters <= 0 {
 		return domainErrors.NewValidationError("PORTICO_RADIUS_INVALID", "detectionRadiusMeters debe ser mayor que 0")
@@ -123,6 +118,11 @@ func (p *Portico) Validate() error {
 		wkt := strings.ToUpper(strings.TrimSpace(p.ZonaDeteccionWKT))
 		if !strings.HasPrefix(wkt, "POLYGON") {
 			return domainErrors.NewValidationError("PORTICO_ZONA_WKT_INVALID", "zonaDeteccionWkt debe ser POLYGON WKT")
+		}
+	}
+	for i := range p.Vias {
+		if err := p.Vias[i].Validate(); err != nil {
+			return err
 		}
 	}
 

@@ -15,7 +15,6 @@ type PorticoUpsertRequest struct {
 	Latitude              float64         `json:"latitude"`
 	Longitude             float64         `json:"longitude"`
 	Bearing               *float64        `json:"bearing,omitempty"`
-	BearingToleranceDeg   *int            `json:"bearingToleranceDeg,omitempty"`
 	DetectionRadiusMeters *float64        `json:"detectionRadiusMeters,omitempty"`
 	EntryRadiusMeters     *float64        `json:"entryRadiusMeters,omitempty"`
 	ExitRadiusMeters      *float64        `json:"exitRadiusMeters,omitempty"`
@@ -30,6 +29,7 @@ type PorticoUpsertRequest struct {
 	ZonaDeteccionWKT      string          `json:"zonaDeteccionWkt,omitempty"`
 	VehicleTypes          []string        `json:"vehicleTypes,omitempty"`
 	IsActive              *bool           `json:"isActive,omitempty"`
+	Vias                  []ViaRequest    `json:"vias,omitempty"`
 	Tarifas               []TarifaRequest `json:"tarifas,omitempty"`
 }
 
@@ -53,7 +53,6 @@ func (r *PorticoUpsertRequest) ToEntity() (*entities.Portico, error) {
 		Latitude:              r.Latitude,
 		Longitude:             r.Longitude,
 		Bearing:               r.Bearing,
-		BearingToleranceDeg:   r.BearingToleranceDeg,
 		DetectionRadiusMeters: r.DetectionRadiusMeters,
 		EntryRadiusMeters:     r.EntryRadiusMeters,
 		ExitRadiusMeters:      r.ExitRadiusMeters,
@@ -68,10 +67,19 @@ func (r *PorticoUpsertRequest) ToEntity() (*entities.Portico, error) {
 		ZonaDeteccionWKT:      strings.TrimSpace(r.ZonaDeteccionWKT),
 		VehicleTypes:          r.VehicleTypes,
 		IsActive:              true,
+		Vias:                  make([]entities.Via, 0, len(r.Vias)),
 		Tarifas:               make([]entities.Tarifa, 0, len(r.Tarifas)),
 	}
 	if r.IsActive != nil {
 		out.IsActive = *r.IsActive
+	}
+
+	for _, v := range r.Vias {
+		via, err := v.ToEntity()
+		if err != nil {
+			return nil, err
+		}
+		out.Vias = append(out.Vias, via)
 	}
 
 	for _, tr := range r.Tarifas {

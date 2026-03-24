@@ -41,18 +41,13 @@ func (h *GeoBatchHandler) IngestBatch(c *gin.Context) {
 		return
 	}
 
-	if err := h.uc.ValidateBatch(c.Request.Context(), &req); err != nil {
+	result, err := h.uc.ProcessBatch(c.Request.Context(), ownerID, &req)
+	if err != nil {
 		respondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"status":     "RECEIVED",
-		"vehiculoId": req.VehiculoID,
-		"deviceId":   req.DeviceID,
-		"count":      len(req.Positions),
-		"ownerId":    ownerID,
-	})
+	c.JSON(http.StatusOK, result)
 }
 
 func getAuthUserID(c *gin.Context) (string, error) {

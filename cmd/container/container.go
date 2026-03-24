@@ -95,7 +95,7 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	concesionariasController := concesionariasHandler.NewConcesionariasHandler(concesionariasUseCase)
 	concesionariasRoutes.ConfigConcesionariasVersion(concesionariasController)
 
-	geoUseCase := geoUseCases.NewGeoBatchUseCase()
+	geoUseCase := geoUseCases.NewGeoBatchUseCase(vehiculosRepo, porticosRepo, pasosRepo)
 	geoController := geoHandler.NewGeoBatchHandler(geoUseCase)
 	geoRoutes.ConfigGeoVersion(geoController)
 

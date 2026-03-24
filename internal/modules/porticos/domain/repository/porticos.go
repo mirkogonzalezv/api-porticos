@@ -17,6 +17,7 @@ type PorticoRepository interface {
 	GetByID(ctx context.Context, id string) (*entities.Portico, error)
 	GetByCodigo(ctx context.Context, codigo string) (*entities.Portico, error)
 	ListNearby(ctx context.Context, lat, lng, maxDistanceMeters float64) ([]entities.Portico, error)
+	FindByTrajectory(ctx context.Context, lineWKT string) ([]entities.Portico, error)
 	Update(ctx context.Context, portico *entities.Portico) (*entities.Portico, error)
 	Delete(ctx context.Context, id string) error
 }

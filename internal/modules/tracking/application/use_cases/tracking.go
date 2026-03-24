@@ -254,9 +254,6 @@ func bearingOK(p *porticoEntities.Portico, heading float64) bool {
 		return true
 	}
 	tol := 25.0
-	if p.BearingToleranceDeg != nil {
-		tol = float64(*p.BearingToleranceDeg)
-	}
 	diff := math.Abs(*p.Bearing - heading)
 	if diff > 180 {
 		diff = 360 - diff
