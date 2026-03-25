@@ -1,7 +1,6 @@
 package container
 
 import (
-	"fmt"
 	configuracion "rea/porticos/cmd/config"
 	accountsData "rea/porticos/internal/modules/accounts/application/data"
 	accountsUseCases "rea/porticos/internal/modules/accounts/application/use_cases"
@@ -29,18 +28,12 @@ import (
 	porticosUseCases "rea/porticos/internal/modules/porticos/application/use_cases"
 	porticosHandler "rea/porticos/internal/modules/porticos/infraestructure/handler"
 	porticosRoutes "rea/porticos/internal/modules/porticos/infraestructure/routes"
-	trackingData "rea/porticos/internal/modules/tracking/application/data"
-	trackingUseCases "rea/porticos/internal/modules/tracking/application/use_cases"
-	trackingHandler "rea/porticos/internal/modules/tracking/infraestructure/handler"
-	trackingRoutes "rea/porticos/internal/modules/tracking/infraestructure/routes"
 	vehiculosData "rea/porticos/internal/modules/vehiculos/application/data"
 	vehiculosUseCases "rea/porticos/internal/modules/vehiculos/application/use_cases"
 	vehiculosHandler "rea/porticos/internal/modules/vehiculos/infraestructure/handler"
 	vehiculosRoutes "rea/porticos/internal/modules/vehiculos/infraestructure/routes"
-	"rea/porticos/pkg/cache"
 	"rea/porticos/pkg/db"
 	"rea/porticos/pkg/logger"
-	"strings"
 	"time"
 )
 
@@ -53,7 +46,6 @@ type Container struct {
 	PasosController          *pasosHandler.PasosHandler
 	KPIsController           *kpisHandler.KPIsHandler
 	ConcesionariasController *concesionariasHandler.ConcesionariasHandler
-	TrackingController       *trackingHandler.TrackingHandler
 	GeoController            *geoHandler.GeoBatchHandler
 }
 
@@ -99,23 +91,6 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 	geoController := geoHandler.NewGeoBatchHandler(geoUseCase)
 	geoRoutes.ConfigGeoVersion(geoController)
 
-	var trackingStore trackingData.TrackingStore = trackingData.NewTrackingMemoryRepository()
-	if strings.TrimSpace(cfg.RedisHost) != "" {
-		redisClient, err := cache.NewRedis(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB, cfg.RedisSSL)
-		if err != nil {
-			logger.Error("Error conectando Redis, usando memoria: " + err.Error())
-		} else {
-			trackingStore = trackingData.NewTrackingRedisRepository(redisClient.Client)
-			logger.Success("Redis conectado correctamente")
-			logger.General("Redis host=" + cfg.RedisHost + " port=" + fmt.Sprintf("%d", cfg.RedisPort) + " db=" + fmt.Sprintf("%d", cfg.RedisDB) + " ssl=" + fmt.Sprintf("%t", cfg.RedisSSL))
-		}
-	} else {
-		logger.General("REDIS_HOST vacío, tracking en memoria")
-	}
-	trackingUseCase := trackingUseCases.NewTrackingUseCase(porticosRepo, vehiculosRepo, pasosRepo, trackingStore)
-	trackingController := trackingHandler.NewTrackingHandler(trackingUseCase)
-	trackingRoutes.ConfigTrackingVersion(trackingController)
-
 	logger.Success("Container de dependencias inicializado...")
 
 	return &Container{
@@ -126,7 +101,6 @@ func NewContainer(dbConn *db.Postgres, cfg *configuracion.Configuracion) *Contai
 		PasosController:          pasosController,
 		KPIsController:           kpisController,
 		ConcesionariasController: concesionariasController,
-		TrackingController:       trackingController,
 		GeoController:            geoController,
 	}
 }
