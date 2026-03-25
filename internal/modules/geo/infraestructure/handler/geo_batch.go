@@ -10,6 +10,7 @@ import (
 	"rea/porticos/internal/modules/geo/domain/dtos/requests"
 	domainErrors "rea/porticos/pkg/errors"
 	httpMapper "rea/porticos/pkg/http"
+	"rea/porticos/pkg/logger"
 	"rea/porticos/pkg/middlewares"
 
 	"github.com/gin-gonic/gin"
@@ -36,7 +37,9 @@ func (h *GeoBatchHandler) IngestBatch(c *gin.Context) {
 	}
 
 	var req requests.GeoBatchRequest
-	if err := decodeStrictJSON(c, &req); err != nil {
+	rawBody, err := decodeStrictJSON(c, &req)
+	if err != nil {
+		logInvalidPayload(c, rawBody, err)
 		respondError(c, err)
 		return
 	}
@@ -62,31 +65,46 @@ func getAuthUserID(c *gin.Context) (string, error) {
 	return strings.TrimSpace(userID), nil
 }
 
-func decodeStrictJSON(c *gin.Context, target any) error {
+func decodeStrictJSON(c *gin.Context, target any) (string, error) {
 	contentType := strings.ToLower(strings.TrimSpace(c.GetHeader("Content-Type")))
 	if !strings.HasPrefix(contentType, "application/json") {
-		return domainErrors.NewValidationError("CONTENT_TYPE_INVALID", "Content-Type debe ser application/json")
+		return "", domainErrors.NewValidationError("CONTENT_TYPE_INVALID", "Content-Type debe ser application/json")
 	}
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		return domainErrors.NewInternalError("REQUEST_BODY_READ_ERROR", "no se pudo leer request body")
+		return "", domainErrors.NewInternalError("REQUEST_BODY_READ_ERROR", "no se pudo leer request body")
 	}
-	if len(strings.TrimSpace(string(body))) == 0 {
-		return domainErrors.NewValidationError("REQUEST_BODY_REQUIRED", "body JSON es obligatorio")
+	raw := strings.TrimSpace(string(body))
+	if len(raw) == 0 {
+		return "", domainErrors.NewValidationError("REQUEST_BODY_REQUIRED", "body JSON es obligatorio")
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return domainErrors.NewValidationError("JSON_INVALID", "JSON inválido o contiene campos no permitidos")
+		return raw, domainErrors.NewValidationError("JSON_INVALID", "JSON inválido o contiene campos no permitidos")
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return domainErrors.NewValidationError("JSON_INVALID", "JSON inválido: múltiples objetos no permitidos")
+		return raw, domainErrors.NewValidationError("JSON_INVALID", "JSON inválido: múltiples objetos no permitidos")
 	}
-	return nil
+	return raw, nil
 }
 
 func respondError(c *gin.Context, err error) {
 	status, payload := httpMapper.MapErrorToHttp(err)
 	c.JSON(status, payload)
+}
+
+func logInvalidPayload(c *gin.Context, raw string, err error) {
+	const maxLen = 2048
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) > maxLen {
+		trimmed = trimmed[:maxLen] + "...(truncated)"
+	}
+	logger.Error(err, "Geo batch payload inválido",
+		"requestId", c.GetString(middlewares.ContextRequestIDKey),
+		"method", c.Request.Method,
+		"path", c.Request.URL.Path,
+		"payload", trimmed,
+	)
 }
