@@ -470,8 +470,14 @@ func (r *PostgresPorticoRepository) FindViaCrossingsByTrajectory(
 			id::text,
 			way_name,
 			direction_deg,
-			COALESCE(ST_Intersects(entry_line, ST_GeogFromText($2)), false) AS entry_hit,
-			COALESCE(ST_Intersects(exit_line, ST_GeogFromText($2)), false) AS exit_hit
+			CASE
+				WHEN entry_line IS NULL THEN false
+				ELSE ST_DWithin(entry_line, ST_GeogFromText($2), COALESCE(entry_distance_m, 0))
+			END AS entry_hit,
+			CASE
+				WHEN exit_line IS NULL THEN false
+				ELSE ST_DWithin(exit_line, ST_GeogFromText($2), COALESCE(exit_distance_m, 0))
+			END AS exit_hit
 		FROM portico_vias
 		WHERE portico_id = $1
 		  AND is_active = TRUE
