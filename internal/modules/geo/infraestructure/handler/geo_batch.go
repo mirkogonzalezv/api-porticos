@@ -82,7 +82,7 @@ func decodeStrictJSON(c *gin.Context, target any) (string, error) {
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return raw, domainErrors.NewValidationError("JSON_INVALID", "JSON inválido o contiene campos no permitidos")
+		return raw, domainErrors.NewValidationError("JSON_INVALID", "JSON inválido: "+err.Error())
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {

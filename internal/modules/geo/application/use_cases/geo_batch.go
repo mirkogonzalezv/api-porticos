@@ -60,8 +60,9 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	if len(req.Positions) < 3 {
-		return nil, domainErrors.NewValidationError("GEO_POSITIONS_MIN", "positions debe tener al menos 3 puntos")
+	positions := req.PointsList()
+	if len(positions) < 3 {
+		return nil, domainErrors.NewValidationError("GEO_POSITIONS_MIN", "points debe tener al menos 3 puntos")
 	}
 
 	vehiculo, err := uc.vehiculos.GetByID(ctx, ownerID, req.VehiculoID)
@@ -69,7 +70,7 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 		return nil, err
 	}
 
-	parsed, err := parsePositions(req.Positions)
+	parsed, err := parsePositions(positions)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 		Status:     "PROCESSED",
 		VehiculoID: req.VehiculoID,
 		DeviceID:   strings.TrimSpace(req.DeviceID),
-		Positions:  len(req.Positions),
+		Positions:  len(positions),
 		PasoIDs:    make([]string, 0),
 		PorticoIDs: make([]string, 0),
 	}
@@ -170,7 +171,7 @@ func parsePositions(items []requests.GeoPosition) ([]parsedPosition, error) {
 	out := make([]parsedPosition, 0, len(items))
 	for i := range items {
 		p := items[i]
-		ts, err := time.Parse(time.RFC3339, strings.TrimSpace(p.Timestamp))
+		ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(p.Timestamp))
 		if err != nil {
 			return nil, domainErrors.NewValidationError("GEO_TIMESTAMP_INVALID", "timestamp debe usar RFC3339")
 		}

@@ -26,7 +26,6 @@ type PasoPortico struct {
 	MontoCobrado        int        `json:"montoCobrado"`
 	Moneda              string     `json:"moneda"`
 	Fuente              string     `json:"fuente"`
-	TrackingSessionID   string     `json:"trackingSessionId,omitempty"`
 	SourcePosition      any        `json:"sourcePosition,omitempty"`
 	CreatedAt           time.Time  `json:"createdAt"`
 }

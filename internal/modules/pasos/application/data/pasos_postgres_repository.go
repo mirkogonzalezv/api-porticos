@@ -51,9 +51,8 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 			monto_cobrado,
 			moneda,
 			fuente,
-			tracking_session_id,
 			source_position
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id::text
 	`,
 		paso.OwnerSupabaseUserID,
@@ -70,7 +69,6 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 		paso.MontoCobrado,
 		paso.Moneda,
 		paso.Fuente,
-		nullableString(paso.TrackingSessionID),
 		sourceJSON,
 	).Scan(&paso.ID)
 	if err != nil {
@@ -131,9 +129,8 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 				monto_cobrado,
 				moneda,
 				fuente,
-				tracking_session_id,
 				source_position
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 			RETURNING id::text
 		`,
 			pasos[i].OwnerSupabaseUserID,
@@ -150,7 +147,6 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 			pasos[i].MontoCobrado,
 			pasos[i].Moneda,
 			pasos[i].Fuente,
-			nullableString(pasos[i].TrackingSessionID),
 			sourceJSON,
 		).Scan(&id)
 		if err != nil {
@@ -192,7 +188,6 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 			monto_cobrado,
 			moneda,
 			fuente,
-			tracking_session_id,
 			source_position,
 			created_at
 		FROM pasos_portico
@@ -215,7 +210,6 @@ func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id strin
 		&out.MontoCobrado,
 		&out.Moneda,
 		&out.Fuente,
-		&out.TrackingSessionID,
 		&sourceBytes,
 		&out.CreatedAt,
 	)
@@ -260,7 +254,6 @@ func (r *PasosPostgresRepository) fetchByIDs(ctx context.Context, ownerID string
 			monto_cobrado,
 			moneda,
 			fuente,
-			tracking_session_id,
 			source_position,
 			created_at
 		FROM pasos_portico
@@ -294,7 +287,6 @@ func (r *PasosPostgresRepository) fetchByIDs(ctx context.Context, ownerID string
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
-			&item.TrackingSessionID,
 			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
@@ -364,7 +356,6 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 			pp.monto_cobrado,
 			pp.moneda,
 			pp.fuente,
-			pp.tracking_session_id,
 			pp.source_position,
 			pp.created_at
 		FROM pasos_portico pp
@@ -407,7 +398,6 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
-			&item.TrackingSessionID,
 			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
@@ -462,7 +452,6 @@ func (r *PasosPostgresRepository) ListAllRange(
 			pp.monto_cobrado,
 			pp.moneda,
 			pp.fuente,
-			pp.tracking_session_id,
 			pp.source_position,
 			pp.created_at
 		FROM pasos_portico pp
@@ -504,7 +493,6 @@ func (r *PasosPostgresRepository) ListAllRange(
 			&item.MontoCobrado,
 			&item.Moneda,
 			&item.Fuente,
-			&item.TrackingSessionID,
 			&sourceBytes,
 			&item.CreatedAt,
 		); err != nil {
