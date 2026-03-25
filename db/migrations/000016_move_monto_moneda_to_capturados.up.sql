@@ -1,0 +1,2 @@
+-- Deprecated by 000017_move_monto_moneda_back_to_portico.
+-- This migration is kept for history; do not run in new environments.

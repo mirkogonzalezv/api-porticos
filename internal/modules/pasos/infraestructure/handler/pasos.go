@@ -186,6 +186,88 @@ func (h *PasosHandler) ListAll(c *gin.Context) {
 	})
 }
 
+func (h *PasosHandler) ListCapturados(c *gin.Context) {
+	ownerID, err := getAuthUserID(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	from, to, err := parseRangeQuery(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	limit, err := parseQueryInt(c, "limit", 20)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	offset, err := parseQueryInt(c, "offset", 0)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	vehiculoID := strings.TrimSpace(c.Query("vehiculoId"))
+	porticoID := strings.TrimSpace(c.Query("porticoId"))
+
+	items, err := h.uc.ListCapturadosByOwnerRange(c.Request.Context(), ownerID, from, to, vehiculoID, porticoID, limit, offset)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       items,
+		"limit":      limit,
+		"offset":     offset,
+		"from":       from.Format(time.RFC3339),
+		"to":         to.Format(time.RFC3339),
+		"vehiculoId": vehiculoID,
+		"porticoId":  porticoID,
+	})
+}
+
+func (h *PasosHandler) ListCapturadosAll(c *gin.Context) {
+	from, to, err := parseRangeQuery(c)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	limit, err := parseQueryInt(c, "limit", 20)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	offset, err := parseQueryInt(c, "offset", 0)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	vehiculoID := strings.TrimSpace(c.Query("vehiculoId"))
+	porticoID := strings.TrimSpace(c.Query("porticoId"))
+
+	items, err := h.uc.ListCapturadosAllRange(c.Request.Context(), from, to, vehiculoID, porticoID, limit, offset)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       items,
+		"limit":      limit,
+		"offset":     offset,
+		"from":       from.Format(time.RFC3339),
+		"to":         to.Format(time.RFC3339),
+		"vehiculoId": vehiculoID,
+		"porticoId":  porticoID,
+	})
+}
+
 func (h *PasosHandler) Summary(c *gin.Context) {
 	ownerID, err := getAuthUserID(c)
 	if err != nil {

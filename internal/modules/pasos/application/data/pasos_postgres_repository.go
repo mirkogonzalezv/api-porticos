@@ -78,6 +78,64 @@ func (r *PasosPostgresRepository) Create(ctx context.Context, paso *entities.Pas
 	return r.GetByID(ctx, paso.OwnerSupabaseUserID, paso.ID)
 }
 
+func (r *PasosPostgresRepository) CreateCapture(ctx context.Context, paso *entities.PasoCapturado) (*entities.PasoCapturado, error) {
+	if paso == nil {
+		return nil, domainErrors.NewValidationError("CAPTURA_REQUIRED", "captura es obligatoria")
+	}
+	if err := paso.ValidateForCreate(); err != nil {
+		return nil, err
+	}
+
+	sourceJSON, err := encodeSourcePosition(paso.SourcePosition)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_SOURCE_JSON_ERROR", "error serializando posiciones")
+	}
+
+	err = r.pool.QueryRow(ctx, `
+		INSERT INTO pasos_capturados (
+			owner_supabase_user_id,
+			vehiculo_id,
+			portico_id,
+			via_id,
+			fecha_hora_inicio,
+			fecha_hora_fin,
+			entry_timestamp,
+			exit_timestamp,
+			entry_hit,
+			exit_hit,
+			heading_avg,
+			speed_avg,
+			direccion_paso,
+			status,
+			source_position
+		) VALUES (
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+		)
+		RETURNING id::text
+	`,
+		paso.OwnerSupabaseUserID,
+		paso.VehiculoID,
+		paso.PorticoID,
+		nullableString(paso.ViaID),
+		paso.FechaHoraInicio,
+		paso.FechaHoraFin,
+		paso.EntryTimestamp,
+		paso.ExitTimestamp,
+		paso.EntryHit,
+		paso.ExitHit,
+		paso.HeadingAvg,
+		paso.SpeedAvg,
+		nullableString(paso.DireccionPaso),
+		paso.Status,
+		sourceJSON,
+	).Scan(&paso.ID)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_CREATE_ERROR", "error al registrar captura")
+	}
+
+	return paso, nil
+}
+
 func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*entities.PasoPortico) ([]entities.PasoPortico, error) {
 	if len(pasos) == 0 {
 		return nil, domainErrors.NewValidationError("PASO_BATCH_EMPTY", "items es obligatorio")
@@ -408,6 +466,203 @@ func (r *PasosPostgresRepository) ListByOwnerRange(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, domainErrors.NewInternalError("PASO_LIST_ROWS_ERROR", "error iterando pasos")
+	}
+
+	return out, nil
+}
+
+func (r *PasosPostgresRepository) ListCapturadosByOwnerRange(
+	ctx context.Context,
+	ownerID string,
+	filter repository.ListPasosFilter,
+) ([]entities.PasoCapturado, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if ownerID == "" {
+		return nil, domainErrors.NewValidationError("CAPTURA_OWNER_REQUIRED", "usuario no autenticado")
+	}
+
+	limit := filter.Limit
+	offset := filter.Offset
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	vehiculoID := strings.TrimSpace(filter.VehiculoID)
+	porticoID := strings.TrimSpace(filter.PorticoID)
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			pc.id::text,
+			pc.owner_supabase_user_id::text,
+			pc.vehiculo_id::text,
+			v.patente,
+			pc.portico_id::text,
+			p.codigo,
+			c.nombre AS concesionaria_nombre,
+			pc.via_id::text,
+			pc.fecha_hora_inicio,
+			pc.fecha_hora_fin,
+			pc.entry_timestamp,
+			pc.exit_timestamp,
+			pc.entry_hit,
+			pc.exit_hit,
+			pc.heading_avg,
+			pc.speed_avg,
+			pc.direccion_paso,
+			pc.status,
+			pc.source_position,
+			pc.created_at
+		FROM pasos_capturados pc
+		JOIN vehiculos v ON v.id = pc.vehiculo_id
+		JOIN porticos p ON p.id = pc.portico_id
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
+		WHERE pc.owner_supabase_user_id = $1
+		  AND pc.fecha_hora_inicio >= $2
+		  AND pc.fecha_hora_fin <= $3
+		  AND ($4 = '' OR pc.vehiculo_id::text = $4)
+		  AND ($5 = '' OR pc.portico_id::text = $5)
+		ORDER BY pc.fecha_hora_inicio DESC
+		LIMIT $6 OFFSET $7
+	`, ownerID, filter.From, filter.To, vehiculoID, porticoID, limit, offset)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_LIST_ERROR", "error al listar capturas")
+	}
+	defer rows.Close()
+
+	out := make([]entities.PasoCapturado, 0)
+	for rows.Next() {
+		var item entities.PasoCapturado
+		var sourceBytes []byte
+		if err := rows.Scan(
+			&item.ID,
+			&item.OwnerSupabaseUserID,
+			&item.VehiculoID,
+			&item.VehiculoPatente,
+			&item.PorticoID,
+			&item.PorticoCodigo,
+			&item.ConcesionariaNombre,
+			&item.ViaID,
+			&item.FechaHoraInicio,
+			&item.FechaHoraFin,
+			&item.EntryTimestamp,
+			&item.ExitTimestamp,
+			&item.EntryHit,
+			&item.ExitHit,
+			&item.HeadingAvg,
+			&item.SpeedAvg,
+			&item.DireccionPaso,
+			&item.Status,
+			&sourceBytes,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, domainErrors.NewInternalError("CAPTURA_LIST_SCAN_ERROR", "error al leer capturas")
+		}
+		item.SourcePosition = decodeSourcePosition(sourceBytes)
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_LIST_ROWS_ERROR", "error iterando capturas")
+	}
+
+	return out, nil
+}
+
+func (r *PasosPostgresRepository) ListCapturadosAllRange(
+	ctx context.Context,
+	filter repository.ListPasosFilter,
+) ([]entities.PasoCapturado, error) {
+	limit := filter.Limit
+	offset := filter.Offset
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	vehiculoID := strings.TrimSpace(filter.VehiculoID)
+	porticoID := strings.TrimSpace(filter.PorticoID)
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			pc.id::text,
+			pc.owner_supabase_user_id::text,
+			pc.vehiculo_id::text,
+			v.patente,
+			pc.portico_id::text,
+			p.codigo,
+			c.nombre AS concesionaria_nombre,
+			pc.via_id::text,
+			pc.fecha_hora_inicio,
+			pc.fecha_hora_fin,
+			pc.entry_timestamp,
+			pc.exit_timestamp,
+			pc.entry_hit,
+			pc.exit_hit,
+			pc.heading_avg,
+			pc.speed_avg,
+			pc.direccion_paso,
+			pc.status,
+			pc.source_position,
+			pc.created_at
+		FROM pasos_capturados pc
+		JOIN vehiculos v ON v.id = pc.vehiculo_id
+		JOIN porticos p ON p.id = pc.portico_id
+		LEFT JOIN concesionarias c ON c.id = p.concesionaria_id
+		WHERE pc.fecha_hora_inicio >= $1
+		  AND pc.fecha_hora_fin <= $2
+		  AND ($3 = '' OR pc.vehiculo_id::text = $3)
+		  AND ($4 = '' OR pc.portico_id::text = $4)
+		ORDER BY pc.fecha_hora_inicio DESC
+		LIMIT $5 OFFSET $6
+	`, filter.From, filter.To, vehiculoID, porticoID, limit, offset)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_LIST_ERROR", "error al listar capturas")
+	}
+	defer rows.Close()
+
+	out := make([]entities.PasoCapturado, 0)
+	for rows.Next() {
+		var item entities.PasoCapturado
+		var sourceBytes []byte
+		if err := rows.Scan(
+			&item.ID,
+			&item.OwnerSupabaseUserID,
+			&item.VehiculoID,
+			&item.VehiculoPatente,
+			&item.PorticoID,
+			&item.PorticoCodigo,
+			&item.ConcesionariaNombre,
+			&item.ViaID,
+			&item.FechaHoraInicio,
+			&item.FechaHoraFin,
+			&item.EntryTimestamp,
+			&item.ExitTimestamp,
+			&item.EntryHit,
+			&item.ExitHit,
+			&item.HeadingAvg,
+			&item.SpeedAvg,
+			&item.DireccionPaso,
+			&item.Status,
+			&sourceBytes,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, domainErrors.NewInternalError("CAPTURA_LIST_SCAN_ERROR", "error al leer capturas")
+		}
+		item.SourcePosition = decodeSourcePosition(sourceBytes)
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("CAPTURA_LIST_ROWS_ERROR", "error iterando capturas")
 	}
 
 	return out, nil

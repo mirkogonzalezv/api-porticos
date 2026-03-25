@@ -27,8 +27,11 @@ type SummaryPasosFilter struct {
 type PasoPorticoRepository interface {
 	Create(ctx context.Context, paso *entities.PasoPortico) (*entities.PasoPortico, error)
 	CreateBatch(ctx context.Context, pasos []*entities.PasoPortico) ([]entities.PasoPortico, error)
+	CreateCapture(ctx context.Context, paso *entities.PasoCapturado) (*entities.PasoCapturado, error)
 	GetByID(ctx context.Context, ownerID, id string) (*entities.PasoPortico, error)
 	ListByOwnerRange(ctx context.Context, ownerID string, filter ListPasosFilter) ([]entities.PasoPortico, error)
 	ListAllRange(ctx context.Context, filter ListPasosFilter) ([]entities.PasoPortico, error)
+	ListCapturadosByOwnerRange(ctx context.Context, ownerID string, filter ListPasosFilter) ([]entities.PasoCapturado, error)
+	ListCapturadosAllRange(ctx context.Context, filter ListPasosFilter) ([]entities.PasoCapturado, error)
 	SummaryByOwnerRange(ctx context.Context, ownerID string, filter SummaryPasosFilter) ([]entities.ResumenPeriodo, error)
 }

@@ -183,6 +183,10 @@ func (r *CachedPorticoRepository) FindByTrajectory(ctx context.Context, lineWKT 
 	return r.inner.FindByTrajectory(ctx, lineWKT)
 }
 
+func (r *CachedPorticoRepository) FindViaCrossingsByTrajectory(ctx context.Context, porticoID, lineWKT string) ([]entities.ViaCrossing, error) {
+	return r.inner.FindViaCrossingsByTrajectory(ctx, porticoID, lineWKT)
+}
+
 func (r *CachedPorticoRepository) Update(ctx context.Context, portico *entities.Portico) (*entities.Portico, error) {
 	updated, err := r.inner.Update(ctx, portico)
 	if err != nil {

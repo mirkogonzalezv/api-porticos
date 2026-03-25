@@ -1,0 +1,7 @@
+ALTER TABLE pasos_portico
+    DROP COLUMN IF EXISTS monto_cobrado,
+    DROP COLUMN IF EXISTS moneda;
+
+ALTER TABLE pasos_capturados
+    ADD COLUMN IF NOT EXISTS monto_cobrado INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS moneda VARCHAR(3) NOT NULL DEFAULT 'CLP';

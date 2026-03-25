@@ -24,7 +24,9 @@ func RegisterPasosRoutes(rg *gin.RouterGroup, h *handler.PasosHandler) {
 	rg.POST("", allowed, h.Create)
 	rg.POST("/batch", allowed, h.CreateBatch)
 	rg.GET("", allowed, h.List)
+	rg.GET("/capturados", allowed, h.ListCapturados)
 	rg.GET("/admin", adminOnly, h.ListAll)
+	rg.GET("/capturados/admin", adminOnly, h.ListCapturadosAll)
 	rg.GET("/resumen", allowed, h.Summary)
 	rg.GET("/:id", allowed, h.GetByID)
 }

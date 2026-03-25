@@ -72,8 +72,6 @@ func (uc *PasosUseCase) CreateBatch(ctx context.Context, ownerID string, items [
 			Latitud:       item.Latitud,
 			Longitud:      item.Longitud,
 			DireccionPaso: strings.TrimSpace(item.DireccionPaso),
-			MontoCobrado:  item.MontoCobrado,
-			Moneda:        item.Moneda,
 			Fuente:        item.Fuente,
 		}
 		entity, err := req.ToEntity(ownerID)
@@ -157,6 +155,59 @@ func (uc *PasosUseCase) ListAllRange(
 		Offset:     offset,
 	}
 	return uc.pasosRepo.ListAllRange(ctx, filter)
+}
+
+func (uc *PasosUseCase) ListCapturadosByOwnerRange(
+	ctx context.Context,
+	ownerID string,
+	from, to time.Time,
+	vehiculoID, porticoID string,
+	limit, offset int,
+) ([]entities.PasoCapturado, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if ownerID == "" {
+		return nil, domainErrors.NewValidationError("CAPTURA_OWNER_REQUIRED", "usuario no autenticado")
+	}
+	if from.IsZero() || to.IsZero() {
+		return nil, domainErrors.NewValidationError("CAPTURA_RANGE_REQUIRED", "from y to son obligatorios")
+	}
+	if to.Before(from) {
+		return nil, domainErrors.NewValidationError("CAPTURA_RANGE_INVALID", "to no puede ser menor que from")
+	}
+
+	filter := pasosRepository.ListPasosFilter{
+		From:       from,
+		To:         to,
+		VehiculoID: strings.TrimSpace(vehiculoID),
+		PorticoID:  strings.TrimSpace(porticoID),
+		Limit:      limit,
+		Offset:     offset,
+	}
+	return uc.pasosRepo.ListCapturadosByOwnerRange(ctx, ownerID, filter)
+}
+
+func (uc *PasosUseCase) ListCapturadosAllRange(
+	ctx context.Context,
+	from, to time.Time,
+	vehiculoID, porticoID string,
+	limit, offset int,
+) ([]entities.PasoCapturado, error) {
+	if from.IsZero() || to.IsZero() {
+		return nil, domainErrors.NewValidationError("CAPTURA_RANGE_REQUIRED", "from y to son obligatorios")
+	}
+	if to.Before(from) {
+		return nil, domainErrors.NewValidationError("CAPTURA_RANGE_INVALID", "to no puede ser menor que from")
+	}
+
+	filter := pasosRepository.ListPasosFilter{
+		From:       from,
+		To:         to,
+		VehiculoID: strings.TrimSpace(vehiculoID),
+		PorticoID:  strings.TrimSpace(porticoID),
+		Limit:      limit,
+		Offset:     offset,
+	}
+	return uc.pasosRepo.ListCapturadosAllRange(ctx, filter)
 }
 
 func (uc *PasosUseCase) SummaryByOwnerRange(

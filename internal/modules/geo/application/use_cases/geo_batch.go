@@ -95,6 +95,11 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 		PorticoIDs: make([]string, 0),
 	}
 
+	avgH := avgHeading(parsed)
+	avgS := avgSpeed(parsed)
+	direccion := headingToDirection(avgH)
+	sourcePositions := req.PointsList()
+
 	for i := range porticos {
 		p := porticos[i]
 		if !p.IsActive {
@@ -110,43 +115,119 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 			continue
 		}
 
-		dup, err := uc.hasDuplicate(ctx, ownerID, req.VehiculoID, p.ID, windowFrom, windowTo)
+		crossings, err := uc.porticos.FindViaCrossingsByTrajectory(ctx, p.ID, lineWKT)
 		if err != nil {
 			return nil, err
 		}
-		if dup {
-			result.Duplicates++
+		if len(crossings) == 0 {
+			captura := &pasosEntities.PasoCapturado{
+				OwnerSupabaseUserID: ownerID,
+				VehiculoID:          req.VehiculoID,
+				PorticoID:           p.ID,
+				FechaHoraInicio:     from,
+				FechaHoraFin:        to,
+				EntryTimestamp:      nil,
+				ExitTimestamp:       nil,
+				EntryHit:            false,
+				ExitHit:             false,
+				HeadingAvg:          avgH,
+				SpeedAvg:            avgS,
+				DireccionPaso:       direccion,
+				Status:              "CAPTURED",
+				SourcePosition:      sourcePositions,
+			}
+			if err := captura.ValidateForCreate(); err != nil {
+				return nil, err
+			}
+			if _, err := uc.pasos.CreateCapture(ctx, captura); err != nil {
+				return nil, err
+			}
+			result.Skipped++
 			continue
 		}
 
-		monto, moneda := resolveTarifa(p.Tarifas, vehiculo.TipoVehiculo, to)
-		paso := &pasosEntities.PasoPortico{
-			OwnerSupabaseUserID: ownerID,
-			VehiculoID:          req.VehiculoID,
-			PorticoID:           p.ID,
-			FechaHoraPaso:       to,
-			EntryTimestamp:      &from,
-			ExitTimestamp:       &to,
-			DireccionPaso:       p.Direccion,
-			Latitud:             &parsed[len(parsed)-1].Lat,
-			Longitud:            &parsed[len(parsed)-1].Lng,
-			Heading:             &parsed[len(parsed)-1].Heading,
-			Speed:               &parsed[len(parsed)-1].Speed,
-			MontoCobrado:        monto,
-			Moneda:              moneda,
-			Fuente:              "batch",
-		}
-		if err := paso.ValidateForCreate(); err != nil {
-			return nil, err
-		}
+		for _, crossing := range crossings {
+			status := "CAPTURED"
+			entryTS := (*time.Time)(nil)
+			exitTS := (*time.Time)(nil)
+			if crossing.EntryHit {
+				entryTS = &from
+			}
+			if crossing.ExitHit {
+				exitTS = &to
+			}
+			monto, moneda := 0, "CLP"
+			if crossing.EntryHit && crossing.ExitHit {
+				status = "CONFIRMED"
+				monto, moneda = resolveTarifa(p.Tarifas, vehiculo.TipoVehiculo, to)
+			}
 
-		created, err := uc.pasos.Create(ctx, paso)
-		if err != nil {
-			return nil, err
+			captura := &pasosEntities.PasoCapturado{
+				OwnerSupabaseUserID: ownerID,
+				VehiculoID:          req.VehiculoID,
+				PorticoID:           p.ID,
+				ViaID:               crossing.ViaID,
+				FechaHoraInicio:     from,
+				FechaHoraFin:        to,
+				EntryTimestamp:      entryTS,
+				ExitTimestamp:       exitTS,
+				EntryHit:            crossing.EntryHit,
+				ExitHit:             crossing.ExitHit,
+				HeadingAvg:          avgH,
+				SpeedAvg:            avgS,
+				DireccionPaso:       direccion,
+				Status:              status,
+				SourcePosition:      sourcePositions,
+			}
+			if err := captura.ValidateForCreate(); err != nil {
+				return nil, err
+			}
+			if _, err := uc.pasos.CreateCapture(ctx, captura); err != nil {
+				return nil, err
+			}
+
+			if status != "CONFIRMED" {
+				result.Skipped++
+				continue
+			}
+
+			dup, err := uc.hasDuplicate(ctx, ownerID, req.VehiculoID, p.ID, windowFrom, windowTo)
+			if err != nil {
+				return nil, err
+			}
+			if dup {
+				result.Duplicates++
+				continue
+			}
+
+			paso := &pasosEntities.PasoPortico{
+				OwnerSupabaseUserID: ownerID,
+				VehiculoID:          req.VehiculoID,
+				PorticoID:           p.ID,
+				FechaHoraPaso:       to,
+				EntryTimestamp:      entryTS,
+				ExitTimestamp:       exitTS,
+				DireccionPaso:       p.Direccion,
+				Latitud:             &parsed[len(parsed)-1].Lat,
+				Longitud:            &parsed[len(parsed)-1].Lng,
+				Heading:             &parsed[len(parsed)-1].Heading,
+				Speed:               &parsed[len(parsed)-1].Speed,
+				MontoCobrado:        monto,
+				Moneda:              moneda,
+				Fuente:              "batch",
+			}
+			if err := paso.ValidateForCreate(); err != nil {
+				return nil, err
+			}
+
+			created, err := uc.pasos.Create(ctx, paso)
+			if err != nil {
+				return nil, err
+			}
+			result.Created++
+			result.PasoIDs = append(result.PasoIDs, created.ID)
+			result.PorticoIDs = append(result.PorticoIDs, p.ID)
 		}
-		result.Created++
-		result.PasoIDs = append(result.PasoIDs, created.ID)
-		result.PorticoIDs = append(result.PorticoIDs, p.ID)
 	}
 
 	return result, nil
@@ -200,6 +281,61 @@ func buildLineString(points []parsedPosition) string {
 	}
 	b.WriteString(")")
 	return b.String()
+}
+
+func avgHeading(points []parsedPosition) *float64 {
+	if len(points) == 0 {
+		return nil
+	}
+	var sum float64
+	for i := range points {
+		sum += points[i].Heading
+	}
+	avg := sum / float64(len(points))
+	return &avg
+}
+
+func avgSpeed(points []parsedPosition) *float64 {
+	if len(points) == 0 {
+		return nil
+	}
+	var sum float64
+	for i := range points {
+		sum += points[i].Speed
+	}
+	avg := sum / float64(len(points))
+	return &avg
+}
+
+func headingToDirection(heading *float64) string {
+	if heading == nil {
+		return ""
+	}
+	h := *heading
+	for h < 0 {
+		h += 360
+	}
+	for h >= 360 {
+		h -= 360
+	}
+	switch {
+	case h >= 337.5 || h < 22.5:
+		return "N"
+	case h < 67.5:
+		return "NE"
+	case h < 112.5:
+		return "E"
+	case h < 157.5:
+		return "SE"
+	case h < 202.5:
+		return "S"
+	case h < 247.5:
+		return "SW"
+	case h < 292.5:
+		return "W"
+	default:
+		return "NW"
+	}
 }
 
 func formatCoord(lng, lat float64) string {

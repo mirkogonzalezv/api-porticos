@@ -50,9 +50,6 @@ func (p *PasoPortico) ValidateForCreate() error {
 	if p.FechaHoraPaso.IsZero() {
 		return domainErrors.NewValidationError("PASO_FECHA_REQUIRED", "fechaHoraPaso es obligatoria")
 	}
-	if p.MontoCobrado < 0 {
-		return domainErrors.NewValidationError("PASO_MONTO_INVALID", "montoCobrado no puede ser negativo")
-	}
 	if p.EntryTimestamp != nil && p.ExitTimestamp != nil && p.ExitTimestamp.Before(*p.EntryTimestamp) {
 		return domainErrors.NewValidationError("PASO_TIMESTAMP_RANGE_INVALID", "exitTimestamp debe ser posterior a entryTimestamp")
 	}
@@ -64,14 +61,6 @@ func (p *PasoPortico) ValidateForCreate() error {
 			return domainErrors.NewValidationError("PASO_DIRECCION_INVALID", "direccionPaso no permitida")
 		}
 		p.DireccionPaso = d
-	}
-
-	if p.Moneda == "" {
-		p.Moneda = "CLP"
-	}
-	p.Moneda = strings.ToUpper(strings.TrimSpace(p.Moneda))
-	if len(p.Moneda) != 3 {
-		return domainErrors.NewValidationError("PASO_MONEDA_INVALID", "moneda debe tener 3 caracteres")
 	}
 
 	if p.Fuente == "" {
@@ -89,6 +78,17 @@ func (p *PasoPortico) ValidateForCreate() error {
 	}
 	if p.Longitud != nil && (*p.Longitud < -180 || *p.Longitud > 180) {
 		return domainErrors.NewValidationError("PASO_LONGITUD_INVALID", "longitud fuera de rango")
+	}
+
+	if p.MontoCobrado < 0 {
+		return domainErrors.NewValidationError("PASO_MONTO_INVALID", "montoCobrado no puede ser negativo")
+	}
+	if p.Moneda == "" {
+		p.Moneda = "CLP"
+	}
+	p.Moneda = strings.ToUpper(strings.TrimSpace(p.Moneda))
+	if len(p.Moneda) != 3 {
+		return domainErrors.NewValidationError("PASO_MONEDA_INVALID", "moneda debe tener 3 caracteres")
 	}
 
 	return nil

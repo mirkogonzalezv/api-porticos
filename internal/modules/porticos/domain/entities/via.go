@@ -19,6 +19,14 @@ type Via struct {
 	IsActive       bool    `json:"isActive"`
 }
 
+type ViaCrossing struct {
+	ViaID        string
+	WayName      string
+	DirectionDeg float64
+	EntryHit     bool
+	ExitHit      bool
+}
+
 func (v *Via) Validate() error {
 	if strings.TrimSpace(v.WayName) == "" {
 		return domainErrors.NewValidationError("PORTICO_VIA_NAME_REQUIRED", "wayName es obligatorio")

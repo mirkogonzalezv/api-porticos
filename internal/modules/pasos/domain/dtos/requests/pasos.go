@@ -15,8 +15,6 @@ type CreatePasoPorticoRequest struct {
 	Latitud       *float64 `json:"latitud,omitempty"`
 	Longitud      *float64 `json:"longitud,omitempty"`
 	DireccionPaso string   `json:"direccionPaso,omitempty"`
-	MontoCobrado  int      `json:"montoCobrado"`
-	Moneda        string   `json:"moneda,omitempty"`
 	Fuente        string   `json:"fuente,omitempty"`
 }
 
@@ -39,8 +37,6 @@ func (r *CreatePasoPorticoRequest) ToEntity(ownerID string) (*entities.PasoPorti
 		DireccionPaso:       strings.TrimSpace(r.DireccionPaso),
 		Latitud:             r.Latitud,
 		Longitud:            r.Longitud,
-		MontoCobrado:        r.MontoCobrado,
-		Moneda:              strings.TrimSpace(r.Moneda),
 		Fuente:              strings.TrimSpace(r.Fuente),
 	}
 	if err := out.ValidateForCreate(); err != nil {

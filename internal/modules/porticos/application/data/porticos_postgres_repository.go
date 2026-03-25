@@ -452,6 +452,50 @@ func (r *PostgresPorticoRepository) FindByTrajectory(ctx context.Context, lineWK
 	return out, nil
 }
 
+func (r *PostgresPorticoRepository) FindViaCrossingsByTrajectory(
+	ctx context.Context,
+	porticoID, lineWKT string,
+) ([]entities.ViaCrossing, error) {
+	porticoID = strings.TrimSpace(porticoID)
+	if porticoID == "" {
+		return nil, domainErrors.NewValidationError("PORTICO_ID_REQUIRED", "id es obligatorio")
+	}
+	lineWKT = strings.TrimSpace(lineWKT)
+	if lineWKT == "" {
+		return nil, domainErrors.NewValidationError("PORTICO_TRAJECTORY_REQUIRED", "lineWKT es obligatorio")
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			way_name,
+			direction_deg,
+			COALESCE(ST_Intersects(entry_line, ST_GeogFromText($2)), false) AS entry_hit,
+			COALESCE(ST_Intersects(exit_line, ST_GeogFromText($2)), false) AS exit_hit
+		FROM portico_vias
+		WHERE portico_id = $1
+		  AND is_active = TRUE
+		ORDER BY created_at ASC
+	`, porticoID, lineWKT)
+	if err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_VIA_TRAJECTORY_ERROR", "error al evaluar vias")
+	}
+	defer rows.Close()
+
+	out := make([]entities.ViaCrossing, 0)
+	for rows.Next() {
+		var v entities.ViaCrossing
+		if err := rows.Scan(&v.ViaID, &v.WayName, &v.DirectionDeg, &v.EntryHit, &v.ExitHit); err != nil {
+			return nil, domainErrors.NewInternalError("PORTICO_VIA_TRAJECTORY_SCAN_ERROR", "error al leer vias")
+		}
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domainErrors.NewInternalError("PORTICO_VIA_TRAJECTORY_ROWS_ERROR", "error iterando vias")
+	}
+	return out, nil
+}
+
 func (r *PostgresPorticoRepository) GetByCodigo(ctx context.Context, codigo string) (*entities.Portico, error) {
 	codigo = strings.TrimSpace(codigo)
 	if codigo == "" {
