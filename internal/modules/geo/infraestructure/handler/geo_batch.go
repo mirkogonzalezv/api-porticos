@@ -14,6 +14,7 @@ import (
 	"rea/porticos/pkg/middlewares"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type GeoBatchHandler struct {
@@ -101,10 +102,11 @@ func logInvalidPayload(c *gin.Context, raw string, err error) {
 	if len(trimmed) > maxLen {
 		trimmed = trimmed[:maxLen] + "...(truncated)"
 	}
-	logger.Error(err, "Geo batch payload inválido",
-		"requestId", c.GetString(middlewares.ContextRequestIDKey),
-		"method", c.Request.Method,
-		"path", c.Request.URL.Path,
-		"payload", trimmed,
+	logger.Error("Geo batch payload inválido",
+		zap.Error(err),
+		zap.String("user_id", c.GetString(middlewares.ContextUserIDKey)),
+		zap.String("method", c.Request.Method),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("payload", trimmed),
 	)
 }
