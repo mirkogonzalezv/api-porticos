@@ -33,5 +33,4 @@ type PasoPorticoRepository interface {
 	ListAllRange(ctx context.Context, filter ListPasosFilter) ([]entities.PasoPortico, error)
 	ListCapturadosByOwnerRange(ctx context.Context, ownerID string, filter ListPasosFilter) ([]entities.PasoCapturado, error)
 	ListCapturadosAllRange(ctx context.Context, filter ListPasosFilter) ([]entities.PasoCapturado, error)
-	SummaryByOwnerRange(ctx context.Context, ownerID string, filter SummaryPasosFilter) ([]entities.ResumenPeriodo, error)
 }

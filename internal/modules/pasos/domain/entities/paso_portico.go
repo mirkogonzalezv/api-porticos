@@ -30,13 +30,6 @@ type PasoPortico struct {
 	CreatedAt           time.Time  `json:"createdAt"`
 }
 
-type ResumenPeriodo struct {
-	Periodo    time.Time `json:"periodo"`
-	TotalPasos int64     `json:"totalPasos"`
-	TotalMonto int64     `json:"totalMonto"`
-	Moneda     string    `json:"moneda"`
-}
-
 func (p *PasoPortico) ValidateForCreate() error {
 	if strings.TrimSpace(p.OwnerSupabaseUserID) == "" {
 		return domainErrors.NewValidationError("PASO_OWNER_REQUIRED", "usuario no autenticado")

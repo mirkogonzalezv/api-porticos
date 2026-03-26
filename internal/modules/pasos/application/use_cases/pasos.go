@@ -162,12 +162,3 @@ func (uc *PasosUseCase) ListCapturadosAllRange(
 	}
 	return uc.pasosRepo.ListCapturadosAllRange(ctx, filter)
 }
-
-func (uc *PasosUseCase) SummaryByOwnerRange(
-	ctx context.Context,
-	ownerID string,
-	from, to time.Time,
-	vehiculoID, porticoID, groupBy string,
-) ([]entities.ResumenPeriodo, error) {
-	return nil, domainErrors.NewValidationError("PASO_RESUMEN_DISABLED", "pasos/resumen no está habilitado")
-}
