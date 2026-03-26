@@ -50,51 +50,7 @@ func (uc *PasosUseCase) Create(ctx context.Context, paso *entities.PasoPortico) 
 }
 
 func (uc *PasosUseCase) CreateBatch(ctx context.Context, ownerID string, items []requests.CreatePasoBatchItem) ([]entities.PasoPortico, error) {
-	ownerID = strings.TrimSpace(ownerID)
-	if ownerID == "" {
-		return nil, domainErrors.NewValidationError("PASO_OWNER_REQUIRED", "usuario no autenticado")
-	}
-	if len(items) == 0 {
-		return nil, domainErrors.NewValidationError("PASO_BATCH_EMPTY", "items es obligatorio")
-	}
-	if len(items) > 200 {
-		return nil, domainErrors.NewValidationError("PASO_BATCH_LIMIT", "items excede el máximo permitido (200)")
-	}
-
-	pasos := make([]*entities.PasoPortico, 0, len(items))
-	vehiculoIDs := make(map[string]struct{})
-	porticoIDs := make(map[string]struct{})
-	for _, item := range items {
-		req := requests.CreatePasoPorticoRequest{
-			VehiculoID:    item.VehiculoID,
-			PorticoID:     item.PorticoID,
-			FechaHoraPaso: item.FechaHoraPaso,
-			Latitud:       item.Latitud,
-			Longitud:      item.Longitud,
-			DireccionPaso: strings.TrimSpace(item.DireccionPaso),
-			Fuente:        item.Fuente,
-		}
-		entity, err := req.ToEntity(ownerID)
-		if err != nil {
-			return nil, err
-		}
-		vehiculoIDs[entity.VehiculoID] = struct{}{}
-		porticoIDs[entity.PorticoID] = struct{}{}
-		pasos = append(pasos, entity)
-	}
-
-	for vehiculoID := range vehiculoIDs {
-		if _, err := uc.vehiculosRepo.GetByID(ctx, ownerID, vehiculoID); err != nil {
-			return nil, err
-		}
-	}
-	for porticoID := range porticoIDs {
-		if _, err := uc.porticosRepo.GetByID(ctx, porticoID); err != nil {
-			return nil, err
-		}
-	}
-
-	return uc.pasosRepo.CreateBatch(ctx, pasos)
+	return nil, domainErrors.NewValidationError("PASO_BATCH_DISABLED", "pasos/batch no está habilitado; usa geo/batch")
 }
 
 func (uc *PasosUseCase) GetByID(ctx context.Context, ownerID, id string) (*entities.PasoPortico, error) {

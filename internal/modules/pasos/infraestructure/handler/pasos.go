@@ -58,35 +58,6 @@ func (h *PasosHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, out)
 }
 
-func (h *PasosHandler) CreateBatch(c *gin.Context) {
-	ownerID, err := getAuthUserID(c)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	var req requests.CreatePasoBatchRequest
-	if err := decodeStrictJSON(c, &req); err != nil {
-		respondError(c, err)
-		return
-	}
-	if err := req.Validate(); err != nil {
-		respondError(c, err)
-		return
-	}
-
-	items, err := h.uc.CreateBatch(c.Request.Context(), ownerID, req.Items)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"data":  items,
-		"count": len(items),
-	})
-}
-
 func (h *PasosHandler) GetByID(c *gin.Context) {
 	ownerID, err := getAuthUserID(c)
 	if err != nil {

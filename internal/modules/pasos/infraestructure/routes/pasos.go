@@ -22,7 +22,6 @@ func RegisterPasosRoutes(rg *gin.RouterGroup, h *handler.PasosHandler) {
 	adminOnly := middlewares.RequireRoles("admin")
 
 	rg.POST("", allowed, h.Create)
-	rg.POST("/batch", allowed, h.CreateBatch)
 	rg.GET("", allowed, h.List)
 	rg.GET("/capturados", allowed, h.ListCapturados)
 	rg.GET("/admin", adminOnly, h.ListAll)
