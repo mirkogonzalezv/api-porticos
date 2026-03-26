@@ -45,13 +45,18 @@ func (h *GeoBatchHandler) IngestBatch(c *gin.Context) {
 		return
 	}
 
-	result, err := h.uc.ProcessBatch(c.Request.Context(), ownerID, &req)
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(c.GetHeader("X-Idempotency-Key"))
+	}
+	result, err := h.uc.ProcessBatch(c.Request.Context(), ownerID, &req, idempotencyKey)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	_ = result
+	c.Status(http.StatusCreated)
 }
 
 func getAuthUserID(c *gin.Context) (string, error) {

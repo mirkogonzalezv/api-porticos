@@ -50,7 +50,7 @@ func NewGeoBatchUseCase(
 	return &GeoBatchUseCase{vehiculos: vehiculos, porticos: porticos, pasos: pasos}
 }
 
-func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req *requests.GeoBatchRequest) (*GeoBatchResult, error) {
+func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req *requests.GeoBatchRequest, idempotencyKey string) (*GeoBatchResult, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return nil, domainErrors.NewUnauthorizedError("AUTH_REQUIRED", "usuario no autenticado")
 	}
@@ -68,6 +68,19 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 	vehiculo, err := uc.vehiculos.GetByID(ctx, ownerID, req.VehiculoID)
 	if err != nil {
 		return nil, err
+	}
+
+	ok, err := uc.pasos.AcquireIdempotencyKey(ctx, ownerID, idempotencyKey, "geo_batch", 15*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return &GeoBatchResult{
+			Status:     "DUPLICATE",
+			VehiculoID: req.VehiculoID,
+			DeviceID:   strings.TrimSpace(req.DeviceID),
+			Positions:  len(positions),
+		}, nil
 	}
 
 	parsed, err := parsePositions(positions)
@@ -91,9 +104,10 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 		VehiculoID: req.VehiculoID,
 		DeviceID:   strings.TrimSpace(req.DeviceID),
 		Positions:  len(positions),
-		PasoIDs:    make([]string, 0),
-		PorticoIDs: make([]string, 0),
 	}
+
+	capturas := make([]*pasosEntities.PasoCapturado, 0)
+	confirmados := make([]*pasosEntities.PasoPortico, 0)
 
 	avgH := avgHeading(parsed)
 	avgS := avgSpeed(parsed)
@@ -139,9 +153,7 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 			if err := captura.ValidateForCreate(); err != nil {
 				return nil, err
 			}
-			if _, err := uc.pasos.CreateCapture(ctx, captura); err != nil {
-				return nil, err
-			}
+			capturas = append(capturas, captura)
 			result.Skipped++
 			continue
 		}
@@ -182,9 +194,7 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 			if err := captura.ValidateForCreate(); err != nil {
 				return nil, err
 			}
-			if _, err := uc.pasos.CreateCapture(ctx, captura); err != nil {
-				return nil, err
-			}
+			capturas = append(capturas, captura)
 
 			if status != "CONFIRMED" {
 				result.Skipped++
@@ -219,15 +229,16 @@ func (uc *GeoBatchUseCase) ProcessBatch(ctx context.Context, ownerID string, req
 			if err := paso.ValidateForCreate(); err != nil {
 				return nil, err
 			}
-
-			created, err := uc.pasos.Create(ctx, paso)
-			if err != nil {
-				return nil, err
-			}
 			result.Created++
-			result.PasoIDs = append(result.PasoIDs, created.ID)
-			result.PorticoIDs = append(result.PorticoIDs, p.ID)
+			confirmados = append(confirmados, paso)
 		}
+	}
+
+	if err := uc.pasos.CreateCapturesBatch(ctx, capturas); err != nil {
+		return nil, err
+	}
+	if err := uc.pasos.CreateConfirmadosBatch(ctx, confirmados); err != nil {
+		return nil, err
 	}
 
 	return result, nil

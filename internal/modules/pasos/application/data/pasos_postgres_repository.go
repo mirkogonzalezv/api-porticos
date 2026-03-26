@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"rea/porticos/internal/modules/pasos/domain/entities"
 	"rea/porticos/internal/modules/pasos/domain/repository"
@@ -136,6 +137,69 @@ func (r *PasosPostgresRepository) CreateCapture(ctx context.Context, paso *entit
 	return paso, nil
 }
 
+func (r *PasosPostgresRepository) CreateCapturesBatch(ctx context.Context, pasos []*entities.PasoCapturado) error {
+	if len(pasos) == 0 {
+		return nil
+	}
+	rows := make([][]any, 0, len(pasos))
+	for i := range pasos {
+		if pasos[i] == nil {
+			return domainErrors.NewValidationError("CAPTURA_REQUIRED", "captura es obligatoria")
+		}
+		if err := pasos[i].ValidateForCreate(); err != nil {
+			return err
+		}
+		sourceJSON, err := encodeSourcePosition(pasos[i].SourcePosition)
+		if err != nil {
+			return domainErrors.NewInternalError("CAPTURA_SOURCE_JSON_ERROR", "error serializando posiciones")
+		}
+		rows = append(rows, []any{
+			pasos[i].OwnerSupabaseUserID,
+			pasos[i].VehiculoID,
+			pasos[i].PorticoID,
+			nullableString(pasos[i].ViaID),
+			pasos[i].FechaHoraInicio,
+			pasos[i].FechaHoraFin,
+			pasos[i].EntryTimestamp,
+			pasos[i].ExitTimestamp,
+			pasos[i].EntryHit,
+			pasos[i].ExitHit,
+			pasos[i].HeadingAvg,
+			pasos[i].SpeedAvg,
+			nullableString(pasos[i].DireccionPaso),
+			pasos[i].Status,
+			sourceJSON,
+		})
+	}
+
+	_, err := r.pool.CopyFrom(
+		ctx,
+		pgx.Identifier{"pasos_capturados"},
+		[]string{
+			"owner_supabase_user_id",
+			"vehiculo_id",
+			"portico_id",
+			"via_id",
+			"fecha_hora_inicio",
+			"fecha_hora_fin",
+			"entry_timestamp",
+			"exit_timestamp",
+			"entry_hit",
+			"exit_hit",
+			"heading_avg",
+			"speed_avg",
+			"direccion_paso",
+			"status",
+			"source_position",
+		},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		return domainErrors.NewInternalError("CAPTURA_BATCH_ERROR", "error al registrar capturas")
+	}
+	return nil
+}
+
 func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*entities.PasoPortico) ([]entities.PasoPortico, error) {
 	if len(pasos) == 0 {
 		return nil, domainErrors.NewValidationError("PASO_BATCH_EMPTY", "items es obligatorio")
@@ -218,6 +282,129 @@ func (r *PasosPostgresRepository) CreateBatch(ctx context.Context, pasos []*enti
 	}
 
 	return r.fetchByIDs(ctx, ownerID, ids)
+}
+
+func (r *PasosPostgresRepository) CreateConfirmadosBatch(ctx context.Context, pasos []*entities.PasoPortico) error {
+	if len(pasos) == 0 {
+		return nil
+	}
+	rows := make([][]any, 0, len(pasos))
+	for i := range pasos {
+		if pasos[i] == nil {
+			return domainErrors.NewValidationError("PASO_REQUIRED", "paso es obligatorio")
+		}
+		if err := pasos[i].ValidateForCreate(); err != nil {
+			return err
+		}
+		sourceJSON, err := encodeSourcePosition(pasos[i].SourcePosition)
+		if err != nil {
+			return domainErrors.NewInternalError("PASO_SOURCE_JSON_ERROR", "error serializando posición de origen")
+		}
+		rows = append(rows, []any{
+			pasos[i].OwnerSupabaseUserID,
+			pasos[i].VehiculoID,
+			pasos[i].PorticoID,
+			pasos[i].FechaHoraPaso,
+			nullableString(pasos[i].DireccionPaso),
+			pasos[i].EntryTimestamp,
+			pasos[i].ExitTimestamp,
+			pasos[i].Latitud,
+			pasos[i].Longitud,
+			pasos[i].Heading,
+			pasos[i].Speed,
+			pasos[i].MontoCobrado,
+			pasos[i].Moneda,
+			pasos[i].Fuente,
+			sourceJSON,
+		})
+	}
+
+	_, err := r.pool.CopyFrom(
+		ctx,
+		pgx.Identifier{"pasos_portico"},
+		[]string{
+			"owner_supabase_user_id",
+			"vehiculo_id",
+			"portico_id",
+			"fecha_hora_paso",
+			"direccion_paso",
+			"entry_timestamp",
+			"exit_timestamp",
+			"latitud",
+			"longitud",
+			"heading",
+			"speed",
+			"monto_cobrado",
+			"moneda",
+			"fuente",
+			"source_position",
+		},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		return domainErrors.NewInternalError("PASO_BATCH_ERROR", "error al registrar pasos confirmados")
+	}
+	return nil
+}
+
+func (r *PasosPostgresRepository) AcquireIdempotencyKey(
+	ctx context.Context,
+	ownerID, key, scope string,
+	ttl time.Duration,
+) (bool, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	key = strings.TrimSpace(key)
+	scope = strings.TrimSpace(scope)
+	if ownerID == "" || key == "" || scope == "" {
+		return true, nil
+	}
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+
+	tag, err := r.pool.Exec(ctx, `
+		INSERT INTO idempotency_keys (
+			owner_supabase_user_id,
+			idempotency_key,
+			scope,
+			expires_at
+		) VALUES ($1, $2, $3, NOW() + $4::interval)
+		ON CONFLICT (owner_supabase_user_id, idempotency_key, scope) DO NOTHING
+	`, ownerID, key, scope, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+	if err != nil {
+		return false, domainErrors.NewInternalError("IDEMPOTENCY_INSERT_ERROR", "error registrando idempotency key")
+	}
+	if tag.RowsAffected() == 1 {
+		return true, nil
+	}
+
+	var expiresAt time.Time
+	err = r.pool.QueryRow(ctx, `
+		SELECT expires_at
+		FROM idempotency_keys
+		WHERE owner_supabase_user_id = $1
+		  AND idempotency_key = $2
+		  AND scope = $3
+		LIMIT 1
+	`, ownerID, key, scope).Scan(&expiresAt)
+	if err != nil {
+		return false, domainErrors.NewInternalError("IDEMPOTENCY_READ_ERROR", "error leyendo idempotency key")
+	}
+	if time.Now().After(expiresAt) {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE idempotency_keys
+			SET expires_at = NOW() + $4::interval
+			WHERE owner_supabase_user_id = $1
+			  AND idempotency_key = $2
+			  AND scope = $3
+		`, ownerID, key, scope, fmt.Sprintf("%d seconds", int(ttl.Seconds())))
+		if err != nil {
+			return false, domainErrors.NewInternalError("IDEMPOTENCY_UPDATE_ERROR", "error actualizando idempotency key")
+		}
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (r *PasosPostgresRepository) GetByID(ctx context.Context, ownerID, id string) (*entities.PasoPortico, error) {
